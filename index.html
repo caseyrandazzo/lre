@@ -133,7 +133,9 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
 .oz{display:grid;grid-template-columns:56px 1fr 56px;gap:10px;align-items:center}
 .oz output{text-align:center;font-family:var(--display);font-size:2rem;font-variant-numeric:tabular-nums}
 .kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.kind[aria-pressed="true"],#ranges button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.vd{margin-top:8px;width:100%}
+.vd[aria-pressed="true"]::after{content:" ✓"}
+.kind[aria-pressed="true"],.vd[aria-pressed="true"],#ranges button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .lbl{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 #ranges{display:flex;gap:6px} #ranges button{flex:1;padding:9px}
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -235,7 +237,7 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
   blocks:[B("feed","Start-of-day feed",90),B("nap","Nap",90),
    B("feed","Feed",30,"Aim for 9:00 am"),B("play","Play",30),B("nap","Nap",120),
    ...FPN(120),...FPN(120),
-   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",30),B("nap","Nap",90),
+   B("feed","Feed",30,""),B("play","Play",30),B("nap","Nap",90),
    B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
    B("feed","Night feed",30,"Anytime 12:00 to 2:30 am",1440),B("night","Back to bed",0),
    B("special","Early wake",60,EARLY,1740)]},
@@ -249,7 +251,7 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
    B("feed","Feed",30,"Aim for 9:00 am"),B("play","Play",30),B("nap","Nap",120),
    ...FPN(120),
    B("feed","Feed",30),B("play","Play",30),B("nap","Nap",90),
-   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",30),B("nap","Nap",90),
+   B("feed","Feed",30,""),B("play","Play",30),B("nap","Nap",90),
    B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
    B("feed","Night feed",30,"Anytime 2:00 to 3:30 am",1560),B("night","Back to bed",0),
    B("special","Early wake",60,EARLY,1740)]},
@@ -262,7 +264,7 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
   blocks:[B("feed","Start-of-day feed",30),B("play","Play",60),B("nap","Nap",90),
    B("feed","Feed",30),B("play","Play",60),B("nap","Nap",90),
    B("feed","Feed",30),B("play","Play",60),B("nap","Nap",90),
-   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",60),B("nap","Nap",60),
+   B("feed","Feed",30,""),B("play","Play",60),B("nap","Nap",60),
    B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
    B("special","Early wake",180,"No need to wake her in this window unless your pediatrician says to. Under 12 weeks: wakes 2+ hours before the first feed, feed her, then feed again at the usual time. Wakes less than 2 hours before, feed her, then offer a snack feed (about a third to half of a normal feed) at the first scheduled time.",1620)]},
  {id:"s4",name:"4 to 6 months",fromDay:112,toDay:181,wake:360,tips:[
@@ -275,7 +277,7 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
    "If you haven't started solids yet, follow this routine and skip the baby food blocks."],
   blocks:[B("feed","Start-of-day feed",30),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("play","Play",30),B("nap","Nap",90),B("grace","Grace period",30),
    B("feed","Feed",30),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("grace","Grace period",30),B("nap","Nap",90),B("grace","Grace period",30),
-   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("play","Play",30),B("nap","Nap",60),B("play","Play",30),
+   B("feed","Feed",30,""),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("play","Play",30),B("nap","Nap",60),B("play","Play",30),
    B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
    B("special","Night",180,"No need to wake her for a middle-of-the-night feed unless your pediatrician says to. This stage is about moving away from round-the-clock feeding toward sleeping 10 to 12 hours straight.",1620)]},
  {id:"s5",name:"6 to 8 months",fromDay:182,toDay:242,wake:360,tips:[
@@ -384,7 +386,7 @@ function computePart(stage,st,sk,hold,grace,endAt,en){
 /* ---------- storage: shared db when available, this browser otherwise ---------- */
 let db=null,unDay=null;
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
-function adopt(d){if(!d||!d.stages)return;if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
+function adopt(d){if(!d||!d.stages)return;d.stages.forEach(st=>(st.blocks||[]).forEach(b=>{if(/^Second-to-last feed/i.test(b.note||""))b.note="";}));if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
 async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main").set(JSON.parse(JSON.stringify(cfg)));}catch(e){toast("Couldn't save the schedule. Try again in a moment.");}}}
 let saving=Promise.resolve();
 let lastLog=null;
@@ -426,9 +428,11 @@ function renderDays(){
   for(let k=-3;k<=3;k++){const d=new Date(base);d.setDate(d.getDate()+k);const ds=dstr(d);
     const b=document.createElement("button");b.className="day";b.setAttribute("aria-pressed",ds===selDate);
     b.innerHTML="<small>"+(k===0?"Today":d.toLocaleDateString(undefined,{weekday:"short"}))+"</small><b>"+d.getDate()+"</b>";
-    b.onclick=()=>{selDate=ds;loadDay();loadEvents();};host.appendChild(b);}
+    b.onclick=()=>{selDate=ds;wantScroll=true;loadDay();loadEvents();};host.appendChild(b);}
   });
 }
+let wantScroll=true;
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&!$("dayView").hidden&&!$("sheetHost").innerHTML){selDate=cycleToday();wantScroll=true;loadDay();loadEvents();}});
 function render(){
   if(!selDate)return;
   const stage=stageFor(selDate),n=ageDays(selDate);
@@ -461,7 +465,8 @@ function render(){
     const past=isToday&&now>=end&&!live;
     if(sk)card.classList.add("skipped");else if(past&&!logged)card.classList.add("past");
     const chips=[];
-    if(logged){chips.push('<span class="chip done">Logged</span>');if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
+    if(events.some(x=>x.blk===i&&x.vd))chips.push('<span class="chip">VD</span>');
+    if(logged){if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
     const sh=r.base[i]-r.plan[i];if(!logged&&sh!==0&&!sk)chips.push('<span class="chip late">'+(sh>0?"+":"−")+dur(sh)+"</span>");
     if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
     if(sk)chips.push('<span class="chip">Skipped</span>');
@@ -474,6 +479,7 @@ function render(){
     card.querySelector(".name").textContent=b.label;if(b.note)card.querySelector(".note").textContent=b.note;
     card.onclick=()=>openSheet(i,stage,r);
     tl.appendChild(card);tick();
+    if(live&&wantScroll){wantScroll=false;requestAnimationFrame(()=>{if(card.isConnected&&!$("dayView").hidden)card.scrollIntoView({block:"center"});});}
     if(live&&!nowPlaced){nowPlaced=true;requestAnimationFrame(()=>{if(!card.isConnected)return;const f=Math.min(1,(now-r.base[i])/Math.max(1,end-r.base[i]));const y=card.offsetTop+f*card.offsetHeight;const nl=document.createElement("div");nl.className="nowline";nl.style.top=y+"px";nl.innerHTML="<span>"+fmt(now)+"</span>";tl.appendChild(nl);});}
   });
 }
@@ -492,7 +498,7 @@ function openSheet(i,stage,r){
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
-   (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>':"")+
+   (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div><button class="btn vd" id="vd">VD</button>':"")+
    '<label class="lbl">Started at<input type="time" id="sTime" class="tfull"></label>'+
    (isToday?'<button class="btn" id="sNow">Started now</button>':"")+
    (hasEnd?'<label class="lbl">Ended at<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">Ended now</button>':""):"")+
@@ -509,7 +515,9 @@ function openSheet(i,stage,r){
   if($("sEndNow"))$("sEndNow").onclick=()=>{let x=near(clock(),pick);if(x<pick)x=pick;pickEnd=x;endSet=true;endDirty=true;dirty=true;showEnd();};
   if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";note();};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.25);dirty=true;so();};$("ozp").onclick=()=>{oz+=0.25;dirty=true;so();};}
   note();
-  const save=at=>{const k=setStart(i,at,oz,endDirty?pickEnd:undefined);toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
+  let vdOn=!!vdOwner(),vdDirty=false;
+  if($("vd")){const sv=()=>$("vd").setAttribute("aria-pressed",vdOn);sv();$("vd").onclick=()=>{vdOn=!vdOn;vdDirty=true;dirty=true;sv();};}
+  const save=at=>{const k=setStart(i,at,oz,endDirty?pickEnd:undefined,vdDirty?vdOn:undefined);toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
   const finish=()=>{upd();updEnd();closeSheet();if(dirty)save(pick);};
   if($("sNow"))$("sNow").onclick=()=>{closeSheet();save(near(clock(),r.base[i]));};
   $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};if(sk)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}saveLog();closeSheet();render();renderLog();};
@@ -593,7 +601,7 @@ function subTrends(){
     Object.keys(trendDocs).concat(Object.keys(m)).forEach(k=>{if(k>=from&&k!==selDate)trendDocs[k]=m[k]||[];});if(!$("trendsView").hidden)renderTrends();},()=>{});}
 }
 function evTitle(e,stage){
-  if(e.t==="bottle")return "Bottle · "+(+e.oz||0)+" oz";
+  if(e.t==="bottle")return "Bottle · "+(+e.oz||0)+" oz"+(e.vd?" · VD":"");
   if(e.t==="diaper")return "Diaper · "+(DIAPER[e.kind]||"");
   if(e.t==="note")return e.note||"Note";
   const n=EV[e.t].label;
@@ -628,18 +636,21 @@ function lastOz(){
   events.forEach(x=>{if(x.t==="bottle")all.push([selDate,x.at,+x.oz]);});
   all.sort((a,b)=>a[0]<b[0]?1:a[0]>b[0]?-1:b[1]-a[1]);return all.length?all[0][2]:3;
 }
+// vitamin D: one bottle a day carries it; once given, later feeds that day show it checked
+function vdOwner(){return events.find(x=>x.t==="bottle"&&x.vd);}
+function applyVd(e,on){if(on){if(!vdOwner())e.vd=true;}else events.forEach(x=>{if(x.t==="bottle")delete x.vd;});}
 function isBottle(b){return b.t==="feed"&&/feed/i.test(b.label);}
 function kindFor(b){return isBottle(b)?"bottle":b.t==="nap"?"nap":b.t==="night"?"night":null;}
 function newId(){return "e"+Date.now()+Math.random().toString(36).slice(2,6);}
 function prevDs(ds){const d=pdate(ds);d.setDate(d.getDate()-1);return dstr(d);}
 function closeOpenNaps(at){events.forEach(e=>{if(e.t==="nap"&&e.end==null&&e.at<at)e.end=at;});}
 // Logging a scheduled block writes the matching log entry (bottle, nap or night sleep) and keeps the two linked.
-function setStart(i,at,oz,end){
+function setStart(i,at,oz,end,vd){
   const stage=stageFor(selDate),b=stage.blocks[i],k=kindFor(b);
   log.starts=log.starts||{};log.skips=log.skips||{};log.ends=log.ends||{};log.starts[i]=at;delete log.skips[i];
   if(end!=null)log.ends[i]=end;else if(log.ends[i]!=null&&log.ends[i]<=at)delete log.ends[i];saveLog();
   closeOpenNaps(at);
-  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i};events.push(e);}e.at=at;if(end!=null&&(k==="nap"||k==="night"))e.end=end;else if(e.end!=null&&e.end<=at)delete e.end;if(k==="bottle")e.oz=oz;}
+  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i};events.push(e);}e.at=at;if(end!=null&&(k==="nap"||k==="night"))e.end=end;else if(e.end!=null&&e.end<=at)delete e.end;if(k==="bottle"){e.oz=oz;if(vd!=null)applyVd(e,vd);}}
   if(i===0){const pd=prevDs(selDate);(trendDocs[pd]||[]).forEach(x=>{if(x.t==="night"&&x.end==null){x.end=at+1440;patchDay(pd,x);}});}
   saveEvents();render();renderLog();
   return k;
@@ -664,7 +675,7 @@ function openEvSheet(t,e){
   h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt"></label>';
   if(span)h+='<label class="lbl">End<input type="time" id="evEnd"></label><button class="btn" id="evClr">Still going, clear the end</button>';
   if(span&&isNew&&isToday)h+='<button class="btn" id="evTimer">Start '+EV[t].label.toLowerCase()+' now</button>';
-  if(t==="bottle")h+='<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>';
+  if(t==="bottle")h+='<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div><button class="btn vd" id="vd">VD</button>';
   if(t==="diaper"&&isNew)h+='<p class="diaper-hint">Tap one to save it.</p>';
   if(t==="diaper")h+='<div class="kinds">'+Object.keys(DIAPER).map(k=>'<button class="btn kind" data-k="'+k+'" aria-pressed="'+(it.kind===k)+'">'+DIAPER[k]+"</button>").join("")+"</div>";
   h+='<input type="text" id="evNote" placeholder="'+(t==="note"?"What happened?":"Note (optional)")+'" aria-label="Note">';
@@ -676,6 +687,8 @@ function openEvSheet(t,e){
   if(span){$("evEnd").value=it.end!=null?toInput(it.end):"";const sc=()=>{$("evClr").hidden=!$("evEnd").value;};sc();$("evEnd").addEventListener("input",sc);$("evEnd").addEventListener("change",sc);$("evClr").onclick=()=>{$("evEnd").value="";sc();};}
   const showOz=()=>{$("ozv").textContent=(+it.oz||0)+" oz";};
   if(t==="bottle"){showOz();$("ozm").onclick=()=>{it.oz=Math.max(0,(+it.oz||0)-0.25);showOz();};$("ozp").onclick=()=>{it.oz=(+it.oz||0)+0.25;showOz();};}
+  let vdOn=!!vdOwner(),vdDirty=false;
+  if($("vd")){const sv=()=>$("vd").setAttribute("aria-pressed",vdOn);sv();$("vd").onclick=()=>{vdOn=!vdOn;vdDirty=true;sv();};}
   document.querySelectorAll(".kind").forEach(b=>b.onclick=()=>{it.kind=b.dataset.k;document.querySelectorAll(".kind").forEach(x=>x.setAttribute("aria-pressed",x===b));if(isNew)$("evSave").click();});
   const commit=()=>{
     let msg="Saved";
@@ -683,6 +696,7 @@ function openEvSheet(t,e){
     if(isNew&&$("evLink")&&$("evLink").checked){const bi=linkSchedule(t,it.at);if(bi>=0){it.blk=bi;msg="Saved, and the schedule moved to match";}}
     if(!isNew&&it.blk!=null&&(it.at!==e.at||it.end!==e.end)){log.starts=log.starts||{};log.ends=log.ends||{};log.starts[it.blk]=it.at;if(span&&it.end!=null)log.ends[it.blk]=it.end;else delete log.ends[it.blk];saveLog();}
     const k=events.findIndex(x=>x.id===it.id);if(k<0)events.push(it);else events[k]=it;
+    if(t==="bottle"&&vdDirty)applyVd(it,vdOn);
     saveEvents();closeSheet();render();renderLog();toast(msg);
   };
   if($("evTimer"))$("evTimer").onclick=()=>{it.at=nowIn(stage);delete it.end;it.note=$("evNote").value.trim();commit();};
@@ -755,7 +769,7 @@ function renderTrends(){
 document.querySelectorAll("#ranges button").forEach(b=>b.onclick=()=>{trRange=+b.dataset.r;renderTrends();});
 
 const VIEWS={day:["dayView","tabDay"],log:["logView","tabLog"],trends:["trendsView","tabTrends"],edit:["editView","tabEdit"]};
-function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});$("days").hidden=!(w==="day"||w==="log");if(w==="day")render();else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
+function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});$("days").hidden=!(w==="day"||w==="log");if(w==="day"){wantScroll=true;render();}else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
 Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(t).onclick=()=>showTab(k);});
 let curToday=null;
 setInterval(()=>{if($("sheetHost").innerHTML)return;const t=cycleToday();if(curToday==null)curToday=t;if(t!==curToday){const was=curToday;curToday=t;if(selDate===was){selDate=t;loadDay();loadEvents();return;}renderDays();}if(!$("dayView").hidden)render();if(!$("logView").hidden)renderLog();},60000);
