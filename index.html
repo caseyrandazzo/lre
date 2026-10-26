@@ -109,7 +109,7 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
 .ed .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
 .ed label{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 .ed label.switch{flex-direction:row;align-items:center;font-size:.88rem;letter-spacing:0;text-transform:none}
-.tpick{display:grid;grid-template-columns:64px minmax(0,1fr) 64px;gap:8px}.tpick input{text-align:center;font-size:1.05rem}
+.tfull{width:100%;text-align:center;font-size:1.05rem}.auto{margin:0;font-size:.88rem;color:var(--fg);min-height:1.2em}.auto:empty{display:none}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.grid2 input,.grid2 select{width:100%}
 .erow{display:grid;grid-template-columns:minmax(0,1fr) 96px 64px auto;gap:6px;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .erow .del{border:0;background:transparent;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:6px}
@@ -369,7 +369,7 @@ function compute(stage,lg,hold,grace){
 /* ---------- storage: shared db when available, this browser otherwise ---------- */
 let db=null,unDay=null;
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
-function adopt(d){if(!d||!d.stages)return;if((d.version||1)<VERSION){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
+function adopt(d){if(!d||!d.stages)return;if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
 async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main").set(JSON.parse(JSON.stringify(cfg)));}catch(e){toast("Couldn't save the schedule. Try again in a moment.");}}}
 let saving=Promise.resolve();
 let lastLog=null;
@@ -455,28 +455,30 @@ function openSheet(i,stage,r){
   const b=stage.blocks[i],logged=(log.starts||{})[i]!=null,sk=!!(log.skips||{})[i];
   const isToday=selDate===cycleToday(),bottle=isBottle(b),linked=events.find(x=>x.blk===i);
   let pick=r.s[i],oz=linked&&linked.oz!=null?+linked.oz:lastOz();
+  // a block whose time has already come gets logged when the sheet closes; a future one only if something was changed
+  const due=isToday?r.base[i]<=nowIn(stage):selDate<cycleToday();
+  let dirty=!logged&&!sk&&due&&b.t!=="grace";
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2><p id="sp"></p>'+
    (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>':"")+
-   (isToday?'<button class="btn primary" id="sNow">Started now</button>':"")+
-   '<div class="tpick"><button class="btn" id="tm5" aria-label="5 minutes earlier">−5</button><input type="time" id="sTime" aria-label="Start time"><button class="btn" id="tp5" aria-label="5 minutes later">+5</button></div>'+
-   '<button class="btn'+(isToday?"":" primary")+'" id="sSet"></button>'+
-   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skipped this")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'<button class="btn ghost" id="sClose">Close</button></div></div>';
+   '<label class="lbl">Started at<input type="time" id="sTime" class="tfull"></label>'+
+   (isToday?'<button class="btn" id="sNow">Started now</button>':"")+
+   '<p class="auto" id="sAuto"></p>'+
+   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skipped this")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn primary" id="sClose">Close</button></div>';
   $("sh").textContent=b.label+(logged?" · started "+fmt(r.s[i]):" · "+fmt(r.s[i]));
   $("sp").textContent="Planned for "+fmt(r.plan[i])+". "+(b.at!=null?"Logging this moves what comes after it until the next fixed time.":"Everything after this moves with the time you log"+(cfg.grace?", unless it's within 15 minutes of when it was due.":"."))+(kindFor(b)?" It also goes in the log.":"");
-  const ti=$("sTime");
-  const label=()=>{$("sSet").textContent="Started at "+fmt(pick);};
-  const showPick=()=>{ti.value=toInput(pick);label();};
-  const upd=()=>{const m=fromInput(ti.value);if(m!=null){pick=near(m,r.base[i]);label();}};
-  showPick();ti.addEventListener("input",upd);ti.addEventListener("change",upd);
-  $("tm5").onclick=()=>{pick-=5;showPick();};$("tp5").onclick=()=>{pick+=5;showPick();};
-  if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.5);so();};$("ozp").onclick=()=>{oz+=0.5;so();};}
-  const go=at=>{const k=setStart(i,at,oz);closeSheet();toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
-  if($("sNow"))$("sNow").onclick=()=>go(near(clock(),r.base[i]));
-  $("sSet").onclick=()=>{upd();go(pick);};
+  const ti=$("sTime");ti.value=toInput(pick);
+  const note=()=>{$("sAuto").textContent=dirty?"Close saves it at "+fmt(pick)+(bottle?", "+oz+" oz.":"."):"";};
+  const upd=()=>{const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;}note();};
+  ti.addEventListener("input",upd);ti.addEventListener("change",upd);
+  if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";note();};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.5);dirty=true;so();};$("ozp").onclick=()=>{oz+=0.5;dirty=true;so();};}
+  note();
+  const save=at=>{const k=setStart(i,at,oz);toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
+  const finish=()=>{upd();closeSheet();if(dirty)save(pick);};
+  if($("sNow"))$("sNow").onclick=()=>{closeSheet();save(near(clock(),r.base[i]));};
   $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};if(sk)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];events=events.filter(x=>x.blk!==i);saveEvents();}saveLog();closeSheet();render();renderLog();};
   if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();closeSheet();render();renderLog();toast("Entry cleared");};
-  $("sClose").onclick=closeSheet;$("sbg").onclick=closeSheet;
+  $("sClose").onclick=finish;$("sbg").onclick=finish;
 }
 let tt=null;function toast(m){const h=$("toastHost");h.innerHTML='<div class="toast" role="status"></div>';h.firstChild.textContent=m;clearTimeout(tt);tt=setTimeout(()=>h.innerHTML="",2400);}
 
@@ -518,7 +520,7 @@ function renderEdit(){
   $("eTo").onchange=e=>{st.toDay=Number(e.target.value)||0;};
   $("eAdd").onclick=()=>{const bi=st.blocks.findIndex(b=>b.t==="night");const nb={t:"play",label:"Play",d:30,note:""};if(bi>=0)st.blocks.splice(bi,0,nb);else st.blocks.push(nb);renderEdit();};
   $("eAddStage").onclick=()=>{const last=draft.stages[draft.stages.length-1];const ns=JSON.parse(JSON.stringify(last));ns.id="s"+Date.now();ns.name="New stage";ns.placeholder=false;ns.fromDay=last.toDay+1;ns.toDay=last.toDay+60;draft.stages.push(ns);editStageId=ns.id;renderEdit();};
-  $("eSave").onclick=async()=>{st.placeholder=false;draft.stages.sort((a,b)=>a.fromDay-b.fromDay);draft.version=VERSION;cfg=JSON.parse(JSON.stringify(draft));await saveCfg();draft=null;toast("Schedule saved");showTab("day");};
+  $("eSave").onclick=async()=>{st.placeholder=false;draft.customized=true;draft.stages.sort((a,b)=>a.fromDay-b.fromDay);draft.version=VERSION;cfg=JSON.parse(JSON.stringify(draft));await saveCfg();draft=null;toast("Schedule saved");showTab("day");};
   $("eReset").onclick=()=>{draft=null;renderEdit();};
 }
 /* ---------- care log ---------- */
