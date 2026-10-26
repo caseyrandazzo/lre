@@ -315,10 +315,9 @@ function pad(n){return String(n).padStart(2,"0");}
 function dstr(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
 function pdate(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d);}
 function clock(){const n=new Date();return n.getHours()*60+n.getMinutes();}
-// A day runs from the stage's morning start to the same time next morning, so 1 am belongs to the previous date.
-function cycleToday(){const n=new Date();const d=new Date(n.getFullYear(),n.getMonth(),n.getDate());const ds=dstr(d);if(clock()<DAYCUT){d.setDate(d.getDate()-1);}return dstr(d);}
-const DAYCUT=240;
-function nowIn(stage){const c=clock();return c<DAYCUT?c+1440:c;}
+// Each page is a calendar day, midnight to midnight. Overnight blocks (night feed, early wake) show on the morning they happen.
+function cycleToday(){return dstr(new Date());}
+function nowIn(stage){return clock();}
 // a typed clock time lands on whichever day is closest to the time it relates to
 function near(m,ref){return Math.abs(m+1440-ref)<Math.abs(m-ref)?m+1440:m;}
 function fmt(m){m=((Math.round(m)%1440)+1440)%1440;let h=Math.floor(m/60),mi=m%60;const ap=h<12?"am":"pm";h=h%12||12;return h+":"+pad(mi)+" "+ap;}
@@ -334,7 +333,7 @@ function inCycle(stage,m){return m<stage.wake?m+1440:m;}
    Blocks run back to back from the morning start. A block with a fixed clock time ("at") always starts then.
    A block with 0 minutes fills the gap until the next block. A logged start moves everything after it,
    unless it is within the grace period of where it was due. */
-function chain(stage,st,sk,durs,grace){
+function chain(stage,st,sk,durs,grace,endAt){
   const bl=stage.blocks,n=bl.length,base=[],disp=[];
   for(let i=0;i<n;i++){
     let e;
@@ -344,15 +343,28 @@ function chain(stage,st,sk,durs,grace){
     if(st[i]!=null){const v=st[i];base[i]=grace&&Math.abs(v-e)<=grace?e:v;disp[i]=v;}
     else{base[i]=e;disp[i]=e;}
   }
-  const end=stage.wake+1440;
+  const end=endAt!=null?endAt:stage.wake+1440;
   const ends=bl.map((b,i)=>sk[i]?base[i]:(b.d===0?(i<n-1?Math.max(base[i],base[i+1]):Math.max(base[i],end)):base[i]+durs[i]));
   return {base,disp,ends};
 }
+// index of the first overnight block (fixed time after midnight); everything from there on happens early the same morning
+function splitAt(stage){const k=stage.blocks.findIndex(b=>b.at!=null&&b.at>=1440);return k<0?stage.blocks.length:k;}
+function order(stage){const n=stage.blocks.length,k=splitAt(stage),o=[];for(let i=k;i<n;i++)o.push(i);for(let i=0;i<k;i++)o.push(i);return o;}
 function compute(stage,lg,hold,grace){
-  const bl=stage.blocks,n=bl.length,st=lg.starts||{},sk=lg.skips||{};
-  const plan=chain(stage,{},{},bl.map(b=>b.d),0).base;
+  const bl=stage.blocks,n=bl.length,k=splitAt(stage),st=lg.starts||{},sk=lg.skips||{};
+  const sub=(lo,hi,shift)=>{const a={},b={};for(let i=lo;i<hi;i++){if(st[i]!=null){let v=+st[i];if(shift&&v>=1440)v-=1440;a[i-lo]=v;}if(sk[i])b[i-lo]=true;}return [a,b];};
+  const [ds,dk]=sub(0,k,false),day=computePart({wake:stage.wake,blocks:bl.slice(0,k)},ds,dk,hold,grace,k<n?1440:null);
+  const out={plan:day.plan.slice(),s:day.s.slice(),base:day.base.slice(),ends:day.ends.slice(),durs:day.durs.slice(),trimmed:day.trimmed,lastLogged:day.lastLogged,bi:day.bi,k};
+  if(k<n){const [os,ok]=sub(k,n,true);
+    const ov=computePart({wake:0,blocks:bl.slice(k).map(b=>{const c=Object.assign({},b);if(c.at!=null)c.at-=1440;return c;})},os,ok,false,grace,stage.wake);
+    for(let j=0;j<n-k;j++){out.plan[k+j]=ov.plan[j];out.s[k+j]=ov.s[j];out.base[k+j]=ov.base[j];out.ends[k+j]=ov.ends[j];out.durs[k+j]=ov.durs[j];}}
+  return out;
+}
+function computePart(stage,st,sk,hold,grace,endAt){
+  const bl=stage.blocks,n=bl.length;
+  const plan=chain(stage,{},{},bl.map(b=>b.d),0,endAt).base;
   const durs=bl.map((b,i)=>sk[i]?0:b.d);
-  let c=chain(stage,st,sk,durs,grace);
+  let c=chain(stage,st,sk,durs,grace,endAt);
   let lastLogged=-1;for(let i=0;i<n;i++)if(st[i]!=null||sk[i])lastLogged=i;
   const trimmed={};
   const bi=bl.findIndex(b=>b.t==="night");
@@ -361,7 +373,7 @@ function compute(stage,lg,hold,grace){
     const adj=[];for(let j=bi-1;j>lastLogged;j--)if(bl[j].t==="nap"&&!sk[j]&&bl[j].d>0)adj.push(j);
     if(delta>0){for(const j of adj){if(delta<=0)break;const cut=Math.min(delta,Math.max(0,durs[j]-30));if(cut>0){durs[j]-=cut;delta-=cut;trimmed[j]=-cut;}}}
     else if(delta<0&&adj.length){const j=adj[0];const add=Math.min(-delta,30);durs[j]+=add;trimmed[j]=add;}
-    c=chain(stage,st,sk,durs,grace);
+    c=chain(stage,st,sk,durs,grace,endAt);
   }
   return {plan,s:c.disp,base:c.base,ends:c.ends,durs,trimmed,lastLogged,bi};
 }
@@ -430,13 +442,13 @@ function render(){
   const r=compute(stage,log,cfg.hold,cfg.grace);
   const tl=$("tl");tl.innerHTML="";
   const now=nowIn(stage);
-  const bi=r.bi>=0?r.bi:r.s.length-1;const shiftBed=r.base[bi]-r.plan[bi];
+  const bi=r.bi>=0?r.bi:r.k-1;const shiftBed=r.base[bi]-r.plan[bi];
   $("summary").textContent=shiftBed===0?"Bedtime on schedule, "+fmt(r.base[bi]):(shiftBed>0?"Bedtime "+dur(shiftBed)+" later, ":"Bedtime "+dur(shiftBed)+" earlier, ")+(shiftBed?fmt(r.base[bi]):"");
-  let ni=-1;if(isToday)stage.blocks.forEach((b,i)=>{if(ni<0&&b.t!=="grace"&&(log.starts||{})[i]==null&&!(log.skips||{})[i]&&r.ends[i]>now)ni=i;});
+  let ni=-1;if(isToday)order(stage).forEach(i=>{const b=stage.blocks[i];if(ni<0&&b.t!=="grace"&&(log.starts||{})[i]==null&&!(log.skips||{})[i]&&r.ends[i]>now)ni=i;});
   $("nextCard").hidden=ni<0;
   if(ni>=0){const b=stage.blocks[ni];$("nextKind").textContent=(r.base[ni]<=now?"Now":"Up next")+" · "+fmt(r.s[ni]);$("nextName").textContent=b.label;$("nextCard").onclick=()=>openSheet(ni,stage,r);}
   let nowPlaced=false;
-  stage.blocks.forEach((b,i)=>{
+  order(stage).forEach(i=>{const b=stage.blocks[i];
     const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
     const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(start);tl.appendChild(lab);
     const card=document.createElement("button");card.className="block b-"+b.t;
@@ -474,15 +486,15 @@ function openSheet(i,stage,r){
    (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>':"")+
    '<label class="lbl">Started at<input type="time" id="sTime" class="tfull"></label>'+
    (isToday?'<button class="btn" id="sNow">Started now</button>':"")+
-   '<p class="auto" id="sAuto"></p>'+
+   
    '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skipped this")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn primary" id="sClose">Close</button></div>';
   $("sh").textContent=b.label+(logged?" · started "+fmt(r.s[i]):" · "+fmt(r.s[i]));
   $("sp").textContent="Planned for "+fmt(r.plan[i])+". "+(b.at!=null?"Logging this moves what comes after it until the next fixed time.":"Everything after this moves with the time you log"+(cfg.grace?", unless it's within 15 minutes of when it was due.":"."))+(kindFor(b)?" It also goes in the log.":"");
   const ti=$("sTime");ti.value=toInput(pick);
-  const note=()=>{$("sAuto").textContent=dirty?"Close saves it at "+fmt(pick)+(bottle?", "+oz+" oz.":"."):"";};
+  const note=()=>{};
   const upd=()=>{const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;}note();};
   ti.addEventListener("input",upd);ti.addEventListener("change",upd);
-  if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";note();};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.5);dirty=true;so();};$("ozp").onclick=()=>{oz+=0.5;dirty=true;so();};}
+  if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";note();};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.25);dirty=true;so();};$("ozp").onclick=()=>{oz+=0.25;dirty=true;so();};}
   note();
   const save=at=>{const k=setStart(i,at,oz);toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
   const finish=()=>{upd();closeSheet();if(dirty)save(pick);};
@@ -610,7 +622,7 @@ function setStart(i,at,oz){
   const stage=stageFor(selDate),b=stage.blocks[i],k=kindFor(b);
   log.starts=log.starts||{};log.skips=log.skips||{};log.starts[i]=at;delete log.skips[i];saveLog();
   closeOpenNaps(at);
-  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i};events.push(e);}e.at=at;if(k==="bottle")e.oz=oz;}
+  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i};events.push(e);}e.at=at;if(e.end!=null&&e.end<=at)delete e.end;if(k==="bottle")e.oz=oz;}
   if(i===0){const pd=prevDs(selDate);(trendDocs[pd]||[]).forEach(x=>{if(x.t==="night"&&x.end==null){x.end=at+1440;patchDay(pd,x);}});}
   saveEvents();render();renderLog();
   return k;
@@ -632,8 +644,8 @@ function openEvSheet(t,e){
   if(isNew&&t==="bottle")it.oz=lastOz();
   const span=t==="nap"||t==="night";
   let h='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>';
-  h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt" value="'+toInput(it.at)+'"></label>';
-  if(span)h+='<label class="lbl">End (leave blank if still going)<input type="time" id="evEnd" value="'+(it.end!=null?toInput(it.end):"")+'"></label>';
+  h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt"></label>';
+  if(span)h+='<label class="lbl">End<input type="time" id="evEnd"></label><button class="btn" id="evClr">Still going, clear the end</button>';
   if(span&&isNew&&isToday)h+='<button class="btn" id="evTimer">Start '+EV[t].label.toLowerCase()+' now</button>';
   if(t==="bottle")h+='<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>';
   if(t==="diaper"&&isNew)h+='<p class="diaper-hint">Tap one to save it.</p>';
@@ -643,9 +655,10 @@ function openEvSheet(t,e){
   h+='<div class="btnrow"><button class="btn primary" id="evSave"'+(isNew&&t==="diaper"?" hidden":"")+'>Save</button>'+(isNew?"":'<button class="btn" id="evDel">Delete</button>')+'<button class="btn ghost" id="evCancel">Cancel</button></div></div>';
   $("sheetHost").innerHTML=h;
   $("sh").textContent=(isNew?"Log ":"Edit ")+EV[t].label.toLowerCase();
-  $("evNote").value=it.note||"";
+  $("evNote").value=it.note||"";$("evAt").value=toInput(it.at);
+  if(span){$("evEnd").value=it.end!=null?toInput(it.end):"";const sc=()=>{$("evClr").hidden=!$("evEnd").value;};sc();$("evEnd").addEventListener("input",sc);$("evEnd").addEventListener("change",sc);$("evClr").onclick=()=>{$("evEnd").value="";sc();};}
   const showOz=()=>{$("ozv").textContent=(+it.oz||0)+" oz";};
-  if(t==="bottle"){showOz();$("ozm").onclick=()=>{it.oz=Math.max(0,(+it.oz||0)-0.5);showOz();};$("ozp").onclick=()=>{it.oz=(+it.oz||0)+0.5;showOz();};}
+  if(t==="bottle"){showOz();$("ozm").onclick=()=>{it.oz=Math.max(0,(+it.oz||0)-0.25);showOz();};$("ozp").onclick=()=>{it.oz=(+it.oz||0)+0.25;showOz();};}
   document.querySelectorAll(".kind").forEach(b=>b.onclick=()=>{it.kind=b.dataset.k;document.querySelectorAll(".kind").forEach(x=>x.setAttribute("aria-pressed",x===b));if(isNew)$("evSave").click();});
   const commit=()=>{
     let msg="Saved";
@@ -657,8 +670,8 @@ function openEvSheet(t,e){
   };
   if($("evTimer"))$("evTimer").onclick=()=>{it.at=nowIn(stage);delete it.end;it.note=$("evNote").value.trim();commit();};
   $("evSave").onclick=()=>{
-    const m=fromInput($("evAt").value);if(m!=null)it.at=near(m,it.at);
-    if(span){const em=fromInput($("evEnd").value);if(em!=null){let x=near(em,it.at);if(x<it.at)x+=1440;it.end=x;}else delete it.end;}
+    const m=fromInput($("evAt").value);if(m!=null)it.at=m;
+    if(span){const em=fromInput($("evEnd").value);if(em!=null){let x=em;if(x<it.at){if(t==="night"||it.at-x>720)x+=1440;else{toast("The end time is before the start");return;}}it.end=x;}else delete it.end;}
     it.note=$("evNote").value.trim();
     if(t==="note"&&!it.note){toast("Type a note first");return;}
     if(t==="diaper"&&!it.kind){toast("Pick pee, poo, mixed or dry");return;}
@@ -727,7 +740,8 @@ document.querySelectorAll("#ranges button").forEach(b=>b.onclick=()=>{trRange=+b
 const VIEWS={day:["dayView","tabDay"],log:["logView","tabLog"],trends:["trendsView","tabTrends"],edit:["editView","tabEdit"]};
 function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});$("days").hidden=!(w==="day"||w==="log");if(w==="day")render();else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
 Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(t).onclick=()=>showTab(k);});
-setInterval(()=>{if($("sheetHost").innerHTML)return;const t=cycleToday();if(selDate!==t&&!document.hasFocus()){selDate=t;loadDay();loadEvents();return;}if(!$("dayView").hidden)render();if(!$("logView").hidden)renderLog();},60000);
+let curToday=null;
+setInterval(()=>{if($("sheetHost").innerHTML)return;const t=cycleToday();if(curToday==null)curToday=t;if(t!==curToday){const was=curToday;curToday=t;if(selDate===was){selDate=t;loadDay();loadEvents();return;}renderDays();}if(!$("dayView").hidden)render();if(!$("logView").hidden)renderLog();},60000);
 let booted=false;
 function gate(show,msg){$("gate").hidden=!show;$("app").hidden=show;if(msg!=null)$("gErr").textContent=msg;}
 window.__noAccess=()=>{gate(true,"This account doesn't have access to Leona's Day. Sign in with one of the two approved accounts.");signOut(auth);};
