@@ -376,11 +376,22 @@ let lastLog=null;
 function saveLog(){const ds=selDate,body=JSON.parse(JSON.stringify(log));LS.set("day:"+ds,body);
   if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{}};
     ["starts","skips"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
-    lastLog=body;saving=saving.then(()=>db.doc("days/"+ds).set(patch,{merge:true})).catch(()=>toast("Couldn't save that entry. Check your connection."));}}
+    // An empty map in a merge write replaces the stored map, which wiped the whole day. Send only what changed.
+    ["starts","skips"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
+    lastLog=body;if(!Object.keys(patch).length)return;
+    saving=saving.then(()=>db.doc("days/"+ds).set(patch,{merge:true})).catch(()=>toast("Couldn't save that entry. Check your connection."));}}
+// Every log entry linked to a schedule block marks that block as started. Restores starts lost to the old save bug.
+let healed={};
+function healStarts(){
+  if(!lastLog||!evLoaded||healed[selDate])return;healed[selDate]=true;
+  log.starts=log.starts||{};log.skips=log.skips||{};let fix=false;
+  events.forEach(e=>{if(e.blk!=null&&log.starts[e.blk]==null&&!log.skips[e.blk]){log.starts[e.blk]=e.at;fix=true;}});
+  if(fix){saveLog();render();}
+}
 function loadDay(){
   if(unDay){unDay();unDay=null;}
   lastLog=null;log=LS.get("day:"+selDate)||{starts:{},skips:{}};render();
-  if(db){unDay=db.doc("days/"+selDate).onSnapshot(snap=>{if(snap.metadata.hasPendingWrites)return;const d=snap.exists?snap.data():null;log=d?JSON.parse(JSON.stringify(d)):{starts:{},skips:{}};log.starts=log.starts||{};log.skips=log.skips||{};lastLog=JSON.parse(JSON.stringify(log));render();},()=>{});}
+  if(db){unDay=db.doc("days/"+selDate).onSnapshot(snap=>{if(snap.metadata.hasPendingWrites)return;const d=snap.exists?snap.data():null;log=d?JSON.parse(JSON.stringify(d)):{starts:{},skips:{}};log.starts=log.starts||{};log.skips=log.skips||{};lastLog=JSON.parse(JSON.stringify(log));render();if(!snap.metadata.fromCache)healStarts();},()=>{});}
 }
 async function boot(){
   adopt(LS.get("cfg"));
@@ -533,13 +544,13 @@ const QI={bottle:'<path d="M10 2h4v3l2 3v12a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8l2-3
 const DIAPER={pee:"Pee",poo:"Poo",mixed:"Mixed",dry:"Dry"};
 let events=[],unEv=null,trendDocs={},trRange=7;let unCfg=null;
 function cacheEv(){LS.set("ev:"+selDate,{date:selDate,items:events});trendDocs[selDate]=events;}
-let evKnown={};
+let evKnown={},evLoaded=false;
 function loadEvents(){
   if(unEv){unEv();unEv=null;}
-  const ds=selDate;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});renderLog();
+  const ds=selDate;evLoaded=false;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});renderLog();
   if(db){unEv=db.collection("events").where("date","==",ds).onSnapshot(x=>{if(x.metadata.hasPendingWrites)return;const k={};
     events=x.docs.map(d=>{const v=JSON.parse(JSON.stringify(d.data()));delete v.date;k[v.id]=JSON.stringify(v);return v;});
-    evKnown=k;cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();},()=>{});}
+    evKnown=k;cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();if(!x.metadata.fromCache){evLoaded=true;healStarts();}},()=>{});}
 }
 // one Firestore document per entry: write only what changed, so two phones never overwrite each other
 function saveEvents(){cacheEv();if(!db)return;const ds=selDate,cur={};
@@ -640,7 +651,7 @@ function openEvSheet(t,e){
     let msg="Saved";
     if(isNew&&(t==="bottle"||t==="nap"))closeOpenNaps(it.at);
     if(isNew&&$("evLink")&&$("evLink").checked){const bi=linkSchedule(t,it.at);if(bi>=0){it.blk=bi;msg="Saved, and the schedule moved to match";}}
-    if(!isNew&&it.blk!=null){log.starts=log.starts||{};log.starts[it.blk]=it.at;saveLog();}
+    if(!isNew&&it.blk!=null&&it.at!==e.at){log.starts=log.starts||{};log.starts[it.blk]=it.at;saveLog();}
     const k=events.findIndex(x=>x.id===it.id);if(k<0)events.push(it);else events[k]=it;
     saveEvents();closeSheet();render();renderLog();toast(msg);
   };
@@ -688,17 +699,20 @@ function renderTrends(){
   document.querySelectorAll("#ranges button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.r===trRange));
   const host=$("trendsBody");const base=pdate(cycleToday());const days=[];
   for(let k=trRange-1;k>=0;k--){const d=new Date(base);d.setDate(d.getDate()-k);const ds=dstr(d);days.push({ds,d,s:dayStats(trendDocs[ds]||[])});}
-  const logged=days.filter(x=>x.s.any);
-  if(!logged.length){host.innerHTML='<p class="hint">No entries in this range yet. Log bottles, diapers, naps and night sleep on the Log tab and your trends will show up here.</p>';return;}
+  const any=days.filter(x=>x.s.any);
+  if(!any.length){host.innerHTML='<p class="hint">No entries in this range yet. Log bottles, diapers, naps and night sleep on the Log tab and your trends will show up here.</p>';return;}
+  // today is still in progress, so it only counts toward the averages when no full day is logged yet
+  const full=any.filter(x=>x.ds!==cycleToday()),partial=!full.length,logged=partial?any:full;
   const n=logged.length,sum=f=>logged.reduce((a,x)=>a+f(x.s),0),bt=sum(s=>s.bottles),oz=sum(s=>s.oz);
-  const tiles=[["Bottle per day",(oz/n).toFixed(1)+" oz"],["Bottles per day",(bt/n).toFixed(1)],["Per bottle",bt?(oz/bt).toFixed(1)+" oz":"None yet"],
+  const r1=v=>Math.round(v*10)/10;
+  const tiles=[["Ounces per day",r1(oz/n)+" oz",bt?r1(bt/n)+" bottles · "+r1(oz/bt)+" oz each":"No bottles logged"],
     ["Nap time per day",dur(sum(s=>s.nap)/n)],["Night sleep",dur(sum(s=>s.night)/n)],["Diapers per day",(sum(s=>s.diapers)/n).toFixed(1),(sum(s=>s.wet)/n).toFixed(1)+" wet · "+(sum(s=>s.dirty)/n).toFixed(1)+" dirty"]];
   const hrs=v=>(Math.round(v*10)/10)+"h";
-  const charts=[barChart("Bottle total per day",days,x=>x.s.oz,v=>v+" oz",v=>Math.round(v)),
+  const charts=[barChart("Ounces per day",days,x=>x.s.oz,v=>v+" oz",v=>Math.round(v)),
     barChart("Nap time per day",days,x=>x.s.nap/60,v=>dur(v*60),hrs),
     barChart("Night sleep",days,x=>x.s.night/60,v=>dur(v*60),hrs),
     barChart("Diapers per day",days,x=>x.s.diapers,v=>v+" diaper"+(v===1?"":"s"),v=>Math.round(v))];
-  host.innerHTML='<p class="hint">Daily averages across '+n+" logged day"+(n>1?"s":"")+' in the last '+trRange+' days.</p><div class="tiles">'+
+  host.innerHTML='<p class="hint">'+(partial?"Today so far. Averages start once a full day is logged.":"Daily averages across "+n+" full day"+(n>1?"s":"")+" in the last "+trRange+" days. Today counts once the day is over.")+'</p><div class="tiles">'+
     tiles.map(t=>'<div class="tile"><small>'+t[0]+"</small><b>"+t[1]+"</b>"+(t[2]?"<i>"+t[2]+"</i>":"")+"</div>").join("")+"</div>"+charts.map(c=>c.html).join("");
   host.querySelectorAll(".chart").forEach((el,ci)=>{
     const c=charts[ci];el.querySelector("h3").textContent=c.title;const ro=el.querySelector(".ro");
