@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Leona">
+<meta name="theme-color" content="#f6f4f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1d21" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Leona's Day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Figtree:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}button{-webkit-tap-highlight-color:transparent}
+.linkbtn{border:0;background:none;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+#gate{max-width:420px;margin:12vh auto 0;display:flex;flex-direction:column;gap:14px}
+#gate h1{font-size:2.4rem}#gate form{display:flex;flex-direction:column;gap:10px}#gate input{width:100%;font-size:16px}#gErr{color:var(--shift);min-height:1.2em;margin:0;font-size:.9rem}
+/* Layout: one-column phone timeline. Time rail on the left, soft blocks sized by duration, bottom sheet for logging. */
+:root{
+  --bg:#f6f4f2; --surface:#ffffff; --fg:#2c3138; --muted:#7a7f86; --line:#e4e0dc;
+  --accent:#6f8695; --accent-ink:#ffffff;
+  --feed:#dfe7ec; --feed-edge:#9fb3c0;
+  --play:#f3e4e2; --play-edge:#d4aaa5;
+  --nap:#ece7df; --nap-edge:#c9bba6;
+  --wind:#e7e3ef; --wind-edge:#ada4c4;
+  --night:#dde0e8; --night-edge:#8d95ab;
+  --shift:#b0705f; --ok:#5f8a6e;
+  --display:"Newsreader", Georgia, "Times New Roman", serif;
+  --body:"Figtree", -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#1b1d21; --surface:#25282d; --fg:#e8e6e3; --muted:#9a9ea5; --line:#353940;
+  --accent:#9fb6c4; --accent-ink:#16181b;
+  --feed:#2b3439; --feed-edge:#6d8796; --play:#3a2f2f; --play-edge:#a07a75;
+  --nap:#35312b; --nap-edge:#93836c; --wind:#312e3a; --wind-edge:#8379a0;
+  --night:#2a2d36; --night-edge:#6e7690; --shift:#de9a87; --ok:#8fbb9c; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#1b1d21; --surface:#25282d; --fg:#e8e6e3; --muted:#9a9ea5; --line:#353940;
+  --accent:#9fb6c4; --accent-ink:#16181b;
+  --feed:#2b3439; --feed-edge:#6d8796; --play:#3a2f2f; --play-edge:#a07a75;
+  --nap:#35312b; --nap-edge:#93836c; --wind:#312e3a; --wind-edge:#8379a0;
+  --night:#2a2d36; --night-edge:#6e7690; --shift:#de9a87; --ok:#8fbb9c; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 96px}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:500;font-size:2rem;line-height:1.1;margin:0;text-wrap:balance}
+.age{color:var(--muted);font-size:.95rem}
+.stage-pill{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.tabs{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:600 .9rem var(--body);padding:8px;border-radius:9px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.day{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:6px 0;text-align:center;cursor:pointer;color:var(--fg);font-family:var(--body)}
+.day small{display:block;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.day b{font-family:var(--display);font-weight:500;font-size:1.15rem}
+.day[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.day[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
+.toolbar{display:flex;flex-direction:column;gap:6px;font-size:.88rem;color:var(--muted)}
+.toolbar .r{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.switch{display:flex;align-items:center;gap:8px;cursor:pointer}
+.switch input{width:18px;height:18px;accent-color:var(--accent)}
+.preview{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.88rem;color:var(--muted)}
+.preview b{color:var(--fg)}
+details.tips{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+details.tips summary{cursor:pointer;font-weight:600;font-size:.9rem}
+details.tips ul{margin:8px 0 2px;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:.88rem;color:var(--muted)}
+.tl{position:relative;display:grid;grid-template-columns:62px minmax(0,1fr);column-gap:10px}
+.tlabel{font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--muted);padding-top:10px;text-align:right;white-space:nowrap}
+.block{position:relative;border-radius:14px;padding:10px 12px 10px 16px;margin-bottom:6px;cursor:pointer;border:0;text-align:left;width:100%;
+  font-family:var(--body);color:var(--fg);display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.block::before{content:"";position:absolute;left:7px;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--edge)}
+.block:focus-visible,.day:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.b-feed{background:var(--feed);--edge:var(--feed-edge)} .b-play,.b-bath{background:var(--play);--edge:var(--play-edge)}
+.b-nap{background:var(--nap);--edge:var(--nap-edge)} .b-wind{background:var(--wind);--edge:var(--wind-edge)} .b-night{background:var(--night);--edge:var(--night-edge)}
+.b-special{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);--edge:var(--line)}
+.b-grace{background:transparent;box-shadow:inset 0 0 0 1px var(--line);--edge:transparent}
+.b-grace .name{font-size:1.1rem;color:var(--muted)}
+.block .row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.block .name{font-family:var(--display);font-size:1.3rem;font-weight:500;line-height:1.2}
+.block .range{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.block .note{font-size:.82rem;color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.chip{font-size:.72rem;font-weight:600;border-radius:999px;padding:2px 8px;background:var(--surface);color:var(--muted);font-variant-numeric:tabular-nums}
+.b-special .chip{background:var(--bg)}
+.chip.late{color:var(--shift)} .chip.done{color:var(--ok)} .chip.live{background:var(--fg);color:var(--bg)}
+.block.past{opacity:.62} .block.skipped{opacity:.4} .block.skipped .name{text-decoration:line-through}
+.nowline{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--fg);z-index:2;pointer-events:none}
+.nowline span{position:absolute;left:0;top:-11px;background:var(--fg);color:var(--bg);font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 7px;font-variant-numeric:tabular-nums}
+.sheet-bg{position:fixed;inset:0;background:rgba(20,22,26,.35);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--surface);border-radius:18px 18px 0 0;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-direction:column;gap:12px;max-width:560px;margin:0 auto;box-shadow:0 -6px 24px rgba(0,0,0,.12)}
+.sheet h2{font-family:var(--display);font-weight:500;font-size:1.5rem;margin:0}
+.sheet p{margin:0;color:var(--muted);font-size:.88rem}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 .95rem var(--body);border-radius:12px;padding:12px 14px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap} .btnrow>*{flex:1 1 120px}
+input[type=time],input[type=date],input[type=number],input[type=text],select{font:500 .95rem var(--body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;min-width:0}
+.ed{display:flex;flex-direction:column;gap:14px}
+.ed .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.ed label{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.erow{display:grid;grid-template-columns:minmax(0,1fr) 96px 64px auto;gap:6px;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.erow .del{border:0;background:transparent;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:6px}
+.ehead{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:0;padding:0}
+.erow input[type=text]{width:100%}
+.etime{font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums;grid-column:1/-1}
+.efix{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:.85rem;z-index:30}
+.quick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.qb{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;cursor:pointer;color:var(--fg);font:500 .78rem var(--body);padding:0}
+.qb span{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;color:var(--fg)}
+.loglist{display:flex;flex-direction:column;gap:8px}
+.ev{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;text-align:left;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;color:var(--fg);font-family:var(--body)}
+.ev .dot{width:12px;height:12px;border-radius:50%;background:var(--dot);margin-top:4px}
+.evb{display:flex;flex-direction:column;gap:2px;min-width:0}
+.evt{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.evn{font-family:var(--display);font-size:1.2rem;line-height:1.25}
+.evx{font-size:.85rem;color:var(--muted)}
+.oz{display:grid;grid-template-columns:56px 1fr 56px;gap:10px;align-items:center}
+.oz output{text-align:center;font-family:var(--display);font-size:2rem;font-variant-numeric:tabular-nums}
+.kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kind[aria-pressed="true"],#ranges button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.lbl{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+#ranges{display:flex;gap:6px} #ranges button{flex:1;padding:9px}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.tile small{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile b{font-family:var(--display);font-weight:500;font-size:1.5rem;font-variant-numeric:tabular-nums}
+.tile i{font-style:normal;font-size:.8rem;color:var(--muted)}
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.chart h3{margin:0;font-family:var(--display);font-weight:500;font-size:1.15rem}
+.chart .ro{font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.2em}
+.chart svg{width:100%;height:auto;display:block}
+.chart .bar{fill:var(--accent)} .chart .bar.sel{fill:var(--fg)} .chart .col{cursor:pointer}
+.sheet{max-height:88vh;overflow:auto}
+@media (max-width:380px){ .erow{grid-template-columns:minmax(0,1fr) 84px 56px auto} }
+@media (prefers-reduced-motion: no-preference){ .sheet{animation:up .18s ease-out} @keyframes up{from{transform:translateY(20px);opacity:.6}} }
+</style>
+</head>
+<body>
+<div id="gate" hidden><h1>Leona's Day</h1><p class="hint">Sign in to see the schedule and log.</p><form id="gForm"><label class="lbl">Email<input type="email" id="gEmail" autocomplete="username" required></label><label class="lbl">Password<input type="password" id="gPass" autocomplete="current-password" required></label><button class="btn primary" id="gBtn" type="submit">Sign in</button><p id="gErr" role="alert"></p></form></div>
+<div id="app" hidden>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Leona's Day</h1>
+      <div class="age" id="age"></div>
+    </div>
+    <span class="stage-pill" id="stagePill"></span>
+  </header>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabDay" aria-selected="true">Schedule</button>
+    <button role="tab" id="tabLog" aria-selected="false">Log</button>
+    <button role="tab" id="tabTrends" aria-selected="false">Trends</button>
+    <button role="tab" id="tabEdit" aria-selected="false">Edit</button>
+  </div>
+  <section id="dayView" class="ed">
+    <div class="days" id="days"></div>
+    <div class="preview" id="preview" hidden></div>
+    <div class="toolbar">
+      <div class="r"><label class="switch"><input type="checkbox" id="hold"> Keep bedtime fixed</label><span id="summary"></span></div>
+      <label class="switch"><input type="checkbox" id="grace"> 15-minute grace period</label>
+    </div>
+    <details class="tips" id="tips"><summary>Tips for this stage</summary><ul id="tipList"></ul></details>
+    <div class="tl" id="tl"></div>
+  </section>
+  <section id="logView" class="ed" hidden>
+    <div class="days" id="logDays"></div>
+    <div class="quick" id="quick"></div>
+    <div class="loglist" id="logList"></div>
+  </section>
+  <section id="trendsView" class="ed" hidden>
+    <div id="ranges"><button class="btn" data-r="7">7 days</button><button class="btn" data-r="14">14 days</button><button class="btn" data-r="30">30 days</button></div>
+    <div id="trendsBody" class="ed"></div>
+  </section>
+  <section id="editView" class="ed" hidden></section>
+</div>
+<div id="sheetHost"></div>
+<div id="toastHost"></div>
+</div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {initializeFirestore,persistentLocalCache,doc,collection,query,where,onSnapshot,setDoc,deleteDoc,deleteField} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+const fbApp=initializeApp({apiKey:"AIzaSyBGIOQwAPA5KeNYH8EtEzughxfV_7CHlQU",authDomain:"leona-day.firebaseapp.com",projectId:"leona-day",storageBucket:"leona-day.firebasestorage.app",messagingSenderId:"442961409056",appId:"1:442961409056:web:362aa025254fa795313845"});
+const auth=getAuth(fbApp);
+const fsdb=initializeFirestore(fbApp,{localCache:persistentLocalCache()});
+let noAccessShown=false;
+const onErr=e=>err=>{if(err&&err.code==="permission-denied"&&!noAccessShown){noAccessShown=true;window.__noAccess&&window.__noAccess();}e&&e(err);};
+const wrap=x=>({id:x.id,exists:x.exists(),data:()=>x.data(),metadata:x.metadata});
+const DB={
+  del:()=>deleteField(),
+  doc:p=>{const r=doc(fsdb,p);return {set:(d,o)=>setDoc(r,d,o||{}),delete:()=>deleteDoc(r),onSnapshot:(n,e)=>onSnapshot(r,x=>n(wrap(x)),onErr(e))};},
+  collection:p=>{const mk=cs=>({where:(f,op,v)=>mk([...cs,where(f,op,v)]),onSnapshot:(n,e)=>onSnapshot(query(collection(fsdb,p),...cs),x=>n({docs:x.docs.map(wrap),metadata:x.metadata}),onErr(e))});return mk([]);}
+};
+(function(){
+const VERSION=7;
+const TYPES={feed:"Feed",play:"Play",nap:"Nap",bath:"Bath",wind:"Wind-down",night:"Bedtime",special:"Early wake",grace:"Grace period"};
+const EARLY="Woke 30+ min before the start-of-day feed: pause 2 to 3 times, feed, then back down until the scheduled feed. Woke within 30 min: pause, then feed and count that as the start-of-day feed.";
+const GENERAL_TIPS=["Grace period: starting a block up to 15 minutes early or late doesn't change the rest of the day. Each feed is a reset point.",
+ "Early wake: if she wakes 30 or more minutes before the start-of-day feed, pause 2 to 3 times, feed, and put her back down until the scheduled feed. Within 30 minutes, pause, then feed and treat that as the start-of-day feed."];
+const B=(t,label,d,note,at)=>{const b={t,label,d,note:note||""};if(at!=null)b.at=at;return b;};
+const FPN=(nap)=>[B("feed","Feed",30),B("play","Play",30),B("nap","Nap",nap)];
+const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:15,stages:[
+ {id:"s1",name:"2 to 4 weeks",fromDay:0,toDay:27,wake:360,tips:[
+   "Start the second feed of the day at 9:00 am whenever you can.",
+   "Keep every nap under 2.5 hours.",
+   "Give the second-to-last feed at the same time each day. Pulling two feeds a little closer together or feeding a bit early to stay on track is fine.",
+   "About three hours between the last two feeds helps her take a full feed at bedtime, so a small second-to-last feed is okay."],
+  blocks:[B("feed","Start-of-day feed",90),B("nap","Nap",90),
+   B("feed","Feed",30,"Aim for 9:00 am"),B("play","Play",30),B("nap","Nap",120),
+   ...FPN(120),...FPN(120),
+   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",30),B("nap","Nap",90),
+   B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
+   B("feed","Night feed",30,"Anytime 12:00 to 2:30 am",1440),B("night","Back to bed",0),
+   B("special","Early wake",60,EARLY,1740)]},
+ {id:"s2",name:"4 to 8 weeks",fromDay:28,toDay:55,wake:360,tips:[
+   "Feed at 9:00 am every day, no matter how the early morning went.",
+   "Keep naps to about 2 hours.",
+   "Give the second-to-last feed (5:30 pm) at the same time each day. Feeding a little early or pulling feeds closer together to hit it is fine.",
+   "If she takes a small second-to-last feed, the bedtime feed usually makes up for it. About three hours between the two helps her take a full feed at bedtime.",
+   "One night feed now, anytime 2:00 to 3:30 am."],
+  blocks:[B("feed","Start-of-day feed",90),B("nap","Nap",90),
+   B("feed","Feed",30,"Aim for 9:00 am"),B("play","Play",30),B("nap","Nap",120),
+   ...FPN(120),
+   B("feed","Feed",30),B("play","Play",30),B("nap","Nap",90),
+   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",30),B("nap","Nap",90),
+   B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
+   B("feed","Night feed",30,"Anytime 2:00 to 3:30 am",1560),B("night","Back to bed",0),
+   B("special","Early wake",60,EARLY,1740)]},
+ {id:"s3",name:"8 to 16 weeks",fromDay:56,toDay:111,wake:360,tips:[
+   "Start the day at the first scheduled feed.",
+   "Keep naps under about 2 hours.",
+   "If she wakes early from a nap, soothe her every 5 to 10 minutes to help her fall back asleep. Within 30 minutes of the next feed, low-key snuggle time is fine.",
+   "Give the second-to-last feed at the same time each day. Pulling feeds closer together or feeding a little early is fine.",
+   "If she takes a small second-to-last feed, the bedtime feed usually makes up for it. About three hours between the two sets up a good bedtime feed."],
+  blocks:[B("feed","Start-of-day feed",30),B("play","Play",60),B("nap","Nap",90),
+   B("feed","Feed",30),B("play","Play",60),B("nap","Nap",90),
+   B("feed","Feed",30),B("play","Play",60),B("nap","Nap",90),
+   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",60),B("nap","Nap",60),
+   B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
+   B("special","Early wake",180,"No need to wake her in this window unless your pediatrician says to. Under 12 weeks: wakes 2+ hours before the first feed, feed her, then feed again at the usual time. Wakes less than 2 hours before, feed her, then offer a snack feed (about a third to half of a normal feed) at the first scheduled time.",1620)]},
+ {id:"s4",name:"4 to 6 months",fromDay:112,toDay:181,wake:360,tips:[
+   "Start the day at the first scheduled feed.",
+   "Keep naps under 2 hours.",
+   "Within 30 minutes of the next feed, low-key snuggle time is fine.",
+   "Use the grace periods to stay flexible without throwing off the routine.",
+   "Missing one of the three baby food feedings is fine. She'll make up for it at the next feeding.",
+   "The goal is for her to be hungry for the bedtime feed, which sets everyone up for good sleep.",
+   "If you haven't started solids yet, follow this routine and skip the baby food blocks."],
+  blocks:[B("feed","Start-of-day feed",30),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("play","Play",30),B("nap","Nap",90),B("grace","Grace period",30),
+   B("feed","Feed",30),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("grace","Grace period",30),B("nap","Nap",90),B("grace","Grace period",30),
+   B("feed","Feed",30,"Second-to-last feed: same time every day"),B("play","Play",30),B("feed","Baby food",30,"Skip if she hasn't started solids"),B("play","Play",30),B("nap","Nap",60),B("play","Play",30),
+   B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
+   B("special","Night",180,"No need to wake her for a middle-of-the-night feed unless your pediatrician says to. This stage is about moving away from round-the-clock feeding toward sleeping 10 to 12 hours straight.",1620)]},
+ {id:"s5",name:"6 to 8 months",fromDay:182,toDay:242,wake:360,tips:[
+   "Start the day at the first scheduled feed.",
+   "If the day goes sideways, protect night sleep with two things: keep naps under 2 hours, and keep the feed after the afternoon nap on time.",
+   "If she wakes early from a nap, give her time to settle. Within 30 minutes of the next feed, low-key snuggle time is fine.",
+   "A little hungry at the bedtime feed is good. She'll eat well and sleep better through the night.",
+   "After supper, let her play and move. Burning energy before bed often helps her sleep.",
+   "Feeds: breast, bottle or both, typically 6 to 8 oz. Aim for 20 to 30 minutes start to finish, and burp twice (three-quarters through and at the end).",
+   "Baby food is about getting used to tastes and textures, so amounts don't matter. As a rough guide: 2 to 4 oz of fruit or veggies mixed with 1 to 2 tablespoons of baby cereal, plus a sippy cup with 2 to 4 oz of breast milk or formula."],
+  blocks:[B("feed","Start-of-day feed",30),B("play","Play",30),B("feed","Baby food",30),B("play","Play",30),B("nap","Nap",90),B("grace","Grace period",30),
+   B("feed","Feed",30),B("play","Play",30),B("feed","Baby food",30),B("grace","Grace period",30),B("nap","Nap",90),B("grace","Grace period",30),
+   B("feed","Feed",30,"Keep this feed on time"),B("play","Play",30),B("feed","Baby food",30),B("play","Play",30),B("nap","Nap",30),B("play","Play",60,"Active play after supper helps her sleep"),
+   B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
+   B("special","Night",180,"Time to move off round-the-clock feeding. The goal is sleeping 10 to 12 hours in a row.",1620)]},
+ {id:"s6",name:"8 to 10 months",fromDay:243,toDay:999,wake:360,tips:[
+   "Start the day at the first scheduled feed when you can.",
+   "If the day doesn't go as planned, protect night sleep with two things: keep naps under 2 hours, and keep the feed after the afternoon nap on time.",
+   "A little hungry at the bedtime feed is good. She'll eat well and sleep through the night.",
+   "After supper, let her play and burn off energy. Some wiggle time before bed helps.",
+   "Feeds: breast, bottle or both, typically 6 to 8 oz, about 20 to 30 minutes start to finish. Appetite naturally dips around 9 months.",
+   "Breakfast, lunch and supper: baby foods, finger foods and a sippy cup."],
+  blocks:[B("feed","Start-of-day feed",30),B("play","Play",30),B("feed","Breakfast",30),B("play","Play",30),B("nap","Nap",90),
+   B("feed","Snack",30),B("feed","Feed",30),B("play","Play",30),B("feed","Lunch",30),B("grace","Grace period",30),B("nap","Nap",60),B("grace","Grace period",30),
+   B("feed","Snack",30),B("feed","Feed",30,"Keep this feed on time"),B("play","Play",90),B("feed","Supper",30),B("play","Play",60,"Active play after supper helps her sleep"),
+   B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
+   B("special","Night",180,"Time to move off round-the-clock feeding. The goal is sleeping 10 to 12 hours in a row.",1620)]}
+]};
+
+let cfg=JSON.parse(JSON.stringify(DEFAULTS));
+let log={starts:{},skips:{}};
+let selDate=null;
+let draft=null; let editStageId=null;
+const $=id=>document.getElementById(id);
+
+/* ---------- dates & time ---------- */
+function pad(n){return String(n).padStart(2,"0");}
+function dstr(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
+function pdate(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d);}
+function clock(){const n=new Date();return n.getHours()*60+n.getMinutes();}
+// A day runs from the stage's morning start to the same time next morning, so 1 am belongs to the previous date.
+function cycleToday(){const n=new Date();const d=new Date(n.getFullYear(),n.getMonth(),n.getDate());const ds=dstr(d);if(clock()<stageFor(ds).wake){d.setDate(d.getDate()-1);}return dstr(d);}
+function nowIn(stage){const c=clock();return c<stage.wake?c+1440:c;}
+function fmt(m){m=((Math.round(m)%1440)+1440)%1440;let h=Math.floor(m/60),mi=m%60;const ap=h<12?"am":"pm";h=h%12||12;return h+":"+pad(mi)+" "+ap;}
+function toInput(m){m=((Math.round(m)%1440)+1440)%1440;return pad(Math.floor(m/60))+":"+pad(m%60);}
+function fromInput(v){if(!v)return null;const[h,m]=v.split(":").map(Number);return h*60+m;}
+function dur(m){m=Math.round(Math.abs(m));const h=Math.floor(m/60),r=m%60;return h?(h+" hr"+(r?" "+r+" min":"")):r+" min";}
+function ageDays(ds){return Math.floor((pdate(ds)-pdate(cfg.birth))/864e5);}
+function ageText(n){if(n<0)return "Not born yet on this date";const w=Math.floor(n/7),d=n%7;if(n<84)return (w?w+" week"+(w>1?"s":""):"")+(w&&d?" ":"")+(d||!w?d+" day"+(d!==1?"s":""):"")+" old";const mo=Math.floor(n/30.44);return mo+" months "+Math.floor(n-mo*30.44)+" days old";}
+function stageFor(ds){const n=ageDays(ds);const ss=cfg.stages;let s=ss.find(x=>n>=x.fromDay&&n<=x.toDay);if(!s)s=n<ss[0].fromDay?ss[0]:ss[ss.length-1];return s;}
+function inCycle(stage,m){return m<stage.wake?m+1440:m;}
+
+/* ---------- the shifting engine ----------
+   Blocks run back to back from the morning start. A block with a fixed clock time ("at") always starts then.
+   A block with 0 minutes fills the gap until the next block. A logged start moves everything after it,
+   unless it is within the grace period of where it was due. */
+function chain(stage,st,sk,durs,grace){
+  const bl=stage.blocks,n=bl.length,base=[],disp=[];
+  for(let i=0;i<n;i++){
+    let e;
+    if(bl[i].at!=null)e=bl[i].at;
+    else if(i===0)e=stage.wake;
+    else e=bl[i-1].d===0&&!sk[i-1]&&st[i]==null?base[i-1]:base[i-1]+durs[i-1];
+    if(st[i]!=null){const v=st[i];base[i]=grace&&Math.abs(v-e)<=grace?e:v;disp[i]=v;}
+    else{base[i]=e;disp[i]=e;}
+  }
+  const end=stage.wake+1440;
+  const ends=bl.map((b,i)=>sk[i]?base[i]:(b.d===0?(i<n-1?Math.max(base[i],base[i+1]):Math.max(base[i],end)):base[i]+durs[i]));
+  return {base,disp,ends};
+}
+function compute(stage,lg,hold,grace){
+  const bl=stage.blocks,n=bl.length,st=lg.starts||{},sk=lg.skips||{};
+  const plan=chain(stage,{},{},bl.map(b=>b.d),0).base;
+  const durs=bl.map((b,i)=>sk[i]?0:b.d);
+  let c=chain(stage,st,sk,durs,grace);
+  let lastLogged=-1;for(let i=0;i<n;i++)if(st[i]!=null||sk[i])lastLogged=i;
+  const trimmed={};
+  const bi=bl.findIndex(b=>b.t==="night");
+  if(hold&&bi>0&&st[bi]==null){
+    let delta=c.base[bi]-plan[bi];
+    const adj=[];for(let j=bi-1;j>lastLogged;j--)if(bl[j].t==="nap"&&!sk[j]&&bl[j].d>0)adj.push(j);
+    if(delta>0){for(const j of adj){if(delta<=0)break;const cut=Math.min(delta,Math.max(0,durs[j]-30));if(cut>0){durs[j]-=cut;delta-=cut;trimmed[j]=-cut;}}}
+    else if(delta<0&&adj.length){const j=adj[0];const add=Math.min(-delta,30);durs[j]+=add;trimmed[j]=add;}
+    c=chain(stage,st,sk,durs,grace);
+  }
+  return {plan,s:c.disp,base:c.base,ends:c.ends,durs,trimmed,lastLogged,bi};
+}
+
+/* ---------- storage: shared db when available, this browser otherwise ---------- */
+let db=null,unDay=null;
+const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
+function adopt(d){if(!d||!d.stages)return;if((d.version||1)<VERSION){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=15;}
+async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main").set(JSON.parse(JSON.stringify(cfg)));}catch(e){toast("Couldn't save the schedule. Try again in a moment.");}}}
+let saving=Promise.resolve();
+let lastLog=null;
+function saveLog(){const ds=selDate,body=JSON.parse(JSON.stringify(log));LS.set("day:"+ds,body);
+  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{}};
+    ["starts","skips"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
+    lastLog=body;saving=saving.then(()=>db.doc("days/"+ds).set(patch,{merge:true})).catch(()=>toast("Couldn't save that entry. Check your connection."));}}
+function loadDay(){
+  if(unDay){unDay();unDay=null;}
+  lastLog=null;log=LS.get("day:"+selDate)||{starts:{},skips:{}};render();
+  if(db){unDay=db.doc("days/"+selDate).onSnapshot(snap=>{if(snap.metadata.hasPendingWrites)return;const d=snap.exists?snap.data():null;log=d?JSON.parse(JSON.stringify(d)):{starts:{},skips:{}};log.starts=log.starts||{};log.skips=log.skips||{};lastLog=JSON.parse(JSON.stringify(log));render();},()=>{});}
+}
+async function boot(){
+  adopt(LS.get("cfg"));
+  selDate=cycleToday();
+  render();
+  db=DB;
+  if(db){
+    unCfg=db.doc("config/main").onSnapshot(snap=>{if(snap.metadata.hasPendingWrites)return;if(snap.exists){adopt(snap.data());LS.set("cfg",cfg);render();}},()=>{});
+    loadDay();loadEvents();subTrends();
+  }
+}
+
+/* ---------- rendering ---------- */
+function renderDays(){
+  ["days","logDays"].forEach(hid=>{
+  const host=$(hid);host.innerHTML="";const today=cycleToday();const base=pdate(today);
+  for(let k=-3;k<=3;k++){const d=new Date(base);d.setDate(d.getDate()+k);const ds=dstr(d);
+    const b=document.createElement("button");b.className="day";b.setAttribute("aria-pressed",ds===selDate);
+    b.innerHTML="<small>"+(k===0?"Today":d.toLocaleDateString(undefined,{weekday:"short"}))+"</small><b>"+d.getDate()+"</b>";
+    b.onclick=()=>{selDate=ds;loadDay();loadEvents();};host.appendChild(b);}
+  });
+}
+function render(){
+  if(!selDate)return;
+  const stage=stageFor(selDate),n=ageDays(selDate);
+  $("age").textContent=ageText(n);
+  $("stagePill").textContent=stage.name;
+  $("hold").checked=!!cfg.hold;$("grace").checked=!!cfg.grace;
+  renderDays();
+  const today=cycleToday(),isToday=selDate===today;
+  const pv=$("preview");
+  if(stage.id!==stageFor(today).id){pv.hidden=false;pv.innerHTML="Showing the <b></b> schedule, which starts "+(selDate>today?"on its own when she reaches that age.":"earlier.");pv.querySelector("b").textContent=stage.name;}
+  else if(stage.placeholder){pv.hidden=false;pv.textContent="This stage is a placeholder. Replace it with your app's schedule in Edit schedule.";}
+  else pv.hidden=true;
+  const tips=(stage.tips||[]).concat(stage.placeholder?[]:GENERAL_TIPS);
+  $("tips").hidden=!tips.length;$("tipList").innerHTML="";tips.forEach(t=>{const li=document.createElement("li");li.textContent=t;$("tipList").appendChild(li);});
+  const r=compute(stage,log,cfg.hold,cfg.grace);
+  const tl=$("tl");tl.innerHTML="";
+  const now=nowIn(stage);
+  const bi=r.bi>=0?r.bi:r.s.length-1;const shiftBed=r.base[bi]-r.plan[bi];
+  $("summary").textContent=shiftBed===0?"Bedtime on schedule":(shiftBed>0?"Bedtime "+dur(shiftBed)+" later":"Bedtime "+dur(shiftBed)+" earlier");
+  let nowPlaced=false;
+  stage.blocks.forEach((b,i)=>{
+    const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
+    const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(start);tl.appendChild(lab);
+    const card=document.createElement("button");card.className="block b-"+b.t;
+    const len=sk?20:Math.max(end-start,30);
+    card.style.minHeight=Math.round(Math.min(len,150)*0.9+20)+"px";
+    const live=isToday&&now>=r.base[i]&&now<end&&!sk;
+    const past=isToday&&now>=end&&!live;
+    if(sk)card.classList.add("skipped");else if(past&&!logged)card.classList.add("past");
+    const chips=[];
+    if(live)chips.push('<span class="chip live">'+dur(now-start)+" in</span>");
+    if(logged){chips.push('<span class="chip done">Started '+fmt(start)+"</span>");if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
+    const sh=r.base[i]-r.plan[i];if(!logged&&sh!==0&&!sk)chips.push('<span class="chip late">'+(sh>0?"+":"−")+dur(sh)+"</span>");
+    if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
+    if(sk)chips.push('<span class="chip">Skipped</span>');
+    const rng=fmt(start)+" to "+fmt(end)+(end>start?" · "+dur(end-start):"");
+    card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
+    card.querySelector(".name").textContent=b.label;if(b.note)card.querySelector(".note").textContent=b.note;
+    card.onclick=()=>openSheet(i,stage,r);
+    tl.appendChild(card);
+    if(live&&!nowPlaced){nowPlaced=true;requestAnimationFrame(()=>{const f=Math.min(1,(now-r.base[i])/Math.max(1,end-r.base[i]));const y=card.offsetTop+f*card.offsetHeight;const nl=document.createElement("div");nl.className="nowline";nl.style.top=y+"px";nl.innerHTML="<span>"+fmt(now)+"</span>";tl.appendChild(nl);});}
+  });
+}
+
+/* ---------- logging sheet ---------- */
+function closeSheet(){$("sheetHost").innerHTML="";}
+function openSheet(i,stage,r){
+  const b=stage.blocks[i],logged=(log.starts||{})[i]!=null,sk=!!(log.skips||{})[i];
+  const isToday=selDate===cycleToday();
+  const h=$("sheetHost");
+  h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2><p id="sp"></p>'+
+   (isToday?'<button class="btn primary" id="sNow">Started now</button>':"")+
+   '<div class="btnrow"><input type="time" id="sTime" value="'+toInput(r.s[i])+'" aria-label="Start time"><button class="btn" id="sSet">Set start time</button></div>'+
+   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skipped this")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'<button class="btn ghost" id="sClose">Close</button></div></div>';
+  $("sh").textContent=b.label+" · "+fmt(r.s[i]);
+  $("sp").textContent="Planned for "+fmt(r.plan[i])+". "+(b.at!=null?"Logging this moves what comes after it until the next fixed time.":"Everything after this moves with the time you log"+(cfg.grace?", unless it's within 15 minutes of when it was due.":"."));
+  const set=m=>{m=inCycle(stage,m);log.starts=log.starts||{};log.skips=log.skips||{};log.starts[i]=m;delete log.skips[i];saveLog();closeSheet();render();toast("Logged "+b.label.toLowerCase()+" at "+fmt(m));};
+  if($("sNow"))$("sNow").onclick=()=>set(clock());
+  $("sSet").onclick=()=>{const m=fromInput($("sTime").value);if(m!=null)set(m);};
+  $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};if(sk)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];}saveLog();closeSheet();render();};
+  if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];saveLog();closeSheet();render();};
+  $("sClose").onclick=closeSheet;$("sbg").onclick=closeSheet;
+}
+let tt=null;function toast(m){const h=$("toastHost");h.innerHTML='<div class="toast" role="status"></div>';h.firstChild.textContent=m;clearTimeout(tt);tt=setTimeout(()=>h.innerHTML="",2400);}
+
+/* ---------- editor ---------- */
+function renderEdit(){
+  if(!draft)draft=JSON.parse(JSON.stringify(cfg));
+  if(!editStageId||!draft.stages.find(s=>s.id===editStageId))editStageId=stageFor(cycleToday()).id;
+  const st=draft.stages.find(s=>s.id===editStageId);
+  const v=$("editView");
+  const plan=chain(st,{},{},st.blocks.map(b=>b.d),0);
+  let rows="";
+  st.blocks.forEach((b,i)=>{rows+='<div class="erow"><input type="text" id="el'+i+'" aria-label="Name"><select id="et'+i+'" aria-label="Type">'+Object.keys(TYPES).map(k=>'<option value="'+k+'"'+(k===b.t?" selected":"")+">"+TYPES[k]+"</option>").join("")+'</select>'+
+    '<input type="number" id="ed'+i+'" min="0" step="5" value="'+b.d+'" aria-label="Minutes">'+
+    '<button class="del" id="ex'+i+'" aria-label="Remove">✕</button><div class="etime">'+fmt(plan.base[i])+" to "+fmt(plan.ends[i])+(b.d===0?" · fills until the next block":"")+'</div>'+
+    '<input type="text" id="en'+i+'" placeholder="Note (optional)" aria-label="Note" style="grid-column:1/-1">'+
+    '<label class="efix" style="text-transform:none;letter-spacing:0;flex-direction:row"><input type="checkbox" id="ef'+i+'"'+(b.at!=null?" checked":"")+'> Always starts at <input type="time" id="ea'+i+'" value="'+(b.at!=null?toInput(b.at):"")+'"'+(b.at!=null?"":" disabled")+'></label></div>';});
+  v.innerHTML='<div class="card"><div class="grid2"><label>Birth date<input type="date" id="eBirth" value="'+draft.birth+'"></label><label>Stage<select id="eStage">'+draft.stages.map(s=>'<option value="'+s.id+'"'+(s.id===st.id?" selected":"")+">"+s.name.replace(/</g,"")+"</option>").join("")+'</select></label></div></div>'+
+   '<div class="card"><div class="grid2"><label>Stage name<input type="text" id="eName"></label><label>Day starts<input type="time" id="eWake" value="'+toInput(st.wake)+'"></label><label>From day of life<input type="number" id="eFrom" min="0" value="'+st.fromDay+'"></label><label>To day of life<input type="number" id="eTo" min="0" value="'+st.toDay+'"></label></div></div>'+
+   '<div class="card"><div class="erow ehead"><span>Block</span><span>Type</span><span>Min</span><span></span></div>'+rows+
+   '<p class="hint">Set minutes to 0 for a block that should fill the time until the next one, like bedtime.</p>'+
+   '<div class="btnrow"><button class="btn" id="eAdd">Add block</button><button class="btn" id="eAddStage">Add stage</button></div></div>'+
+   '<p class="hint" id="whoami"></p><div class="btnrow"><button class="btn primary" id="eSave">Save schedule</button><button class="btn" id="eReset">Discard changes</button></div>';
+  $("eName").value=st.name;$("whoami").innerHTML="Signed in as <b></b>. <button class=\"linkbtn\" id=\"signOut\">Sign out</button>";$("whoami").querySelector("b").textContent=(auth.currentUser&&auth.currentUser.email)||"";$("signOut").onclick=()=>signOut(auth).then(()=>location.reload());
+  st.blocks.forEach((b,i)=>{$("el"+i).value=b.label;$("en"+i).value=b.note||"";
+    $("el"+i).oninput=e=>{b.label=e.target.value;};$("en"+i).oninput=e=>{b.note=e.target.value;};
+    $("et"+i).onchange=e=>{b.t=e.target.value;renderEdit();};
+    $("ed"+i).onchange=e=>{b.d=Math.max(0,Number(e.target.value)||0);renderEdit();};
+    $("ef"+i).onchange=e=>{if(e.target.checked)b.at=plan.base[i];else delete b.at;renderEdit();};
+    $("ea"+i).onchange=e=>{const m=fromInput(e.target.value);if(m!=null){b.at=inCycle(st,m);renderEdit();}};
+    $("ex"+i).onclick=()=>{st.blocks.splice(i,1);renderEdit();};});
+  $("eBirth").onchange=e=>{draft.birth=e.target.value||draft.birth;};
+  $("eStage").onchange=e=>{editStageId=e.target.value;renderEdit();};
+  $("eName").oninput=e=>{st.name=e.target.value;};
+  $("eWake").onchange=e=>{const m=fromInput(e.target.value);if(m!=null){st.wake=m;renderEdit();}};
+  $("eFrom").onchange=e=>{st.fromDay=Number(e.target.value)||0;};
+  $("eTo").onchange=e=>{st.toDay=Number(e.target.value)||0;};
+  $("eAdd").onclick=()=>{const bi=st.blocks.findIndex(b=>b.t==="night");const nb={t:"play",label:"Play",d:30,note:""};if(bi>=0)st.blocks.splice(bi,0,nb);else st.blocks.push(nb);renderEdit();};
+  $("eAddStage").onclick=()=>{const last=draft.stages[draft.stages.length-1];const ns=JSON.parse(JSON.stringify(last));ns.id="s"+Date.now();ns.name="New stage";ns.placeholder=false;ns.fromDay=last.toDay+1;ns.toDay=last.toDay+60;draft.stages.push(ns);editStageId=ns.id;renderEdit();};
+  $("eSave").onclick=async()=>{st.placeholder=false;draft.stages.sort((a,b)=>a.fromDay-b.fromDay);draft.version=VERSION;cfg=JSON.parse(JSON.stringify(draft));await saveCfg();draft=null;toast("Schedule saved");showTab("day");};
+  $("eReset").onclick=()=>{draft=null;renderEdit();};
+}
+/* ---------- care log ---------- */
+const EV={bottle:{label:"Bottle",dot:"var(--feed-edge)",bg:"var(--feed)"},diaper:{label:"Diaper",dot:"var(--nap-edge)",bg:"var(--nap)"},nap:{label:"Nap",dot:"var(--night-edge)",bg:"var(--night)"},night:{label:"Night sleep",dot:"var(--wind-edge)",bg:"var(--wind)"},note:{label:"Note",dot:"var(--play-edge)",bg:"var(--play)"}};
+const QI={bottle:'<path d="M10 2h4v3l2 3v12a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8l2-3z"/><path d="M8 12h8"/>',
+ diaper:'<path d="M3 7h18v3c0 6-4 9-9 9s-9-3-9-9z"/><path d="M8 7v3M16 7v3"/>',
+ nap:'<path d="M5 9h6l-6 8h6M14 5h5l-5 6h5"/>',
+ night:'<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+ note:'<path d="M4 20h4L19 9l-4-4L4 16z"/>'};
+const DIAPER={pee:"Pee",poo:"Poo",mixed:"Mixed",dry:"Dry"};
+let events=[],unEv=null,trendDocs={},trRange=7;let unCfg=null;
+function cacheEv(){LS.set("ev:"+selDate,{date:selDate,items:events});trendDocs[selDate]=events;}
+function loadEvents(){
+  if(unEv){unEv();unEv=null;}
+  const ds=selDate;events=((LS.get("ev:"+ds)||{}).items)||[];renderLog();
+  if(db){unEv=db.collection("events").where("date","==",ds).onSnapshot(x=>{events=x.docs.map(d=>{const v=JSON.parse(JSON.stringify(d.data()));delete v.date;return v;});cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();},()=>{});}
+}
+function putEvent(it){cacheEv();if(db)db.doc("events/"+it.id).set(JSON.parse(JSON.stringify(Object.assign({},it,{date:selDate})))).catch(()=>toast("Couldn't save that entry. Check your connection."));}
+function dropEvent(id){cacheEv();if(db)db.doc("events/"+id).delete().catch(()=>toast("Couldn't delete that entry. Check your connection."));}
+function subTrends(){
+  const base=pdate(cycleToday());base.setDate(base.getDate()-40);const from=dstr(base);
+  for(let k=0;k<42;k++){const d=new Date(base);d.setDate(d.getDate()+k);const v=LS.get("ev:"+dstr(d));if(v&&v.items)trendDocs[dstr(d)]=v.items;}
+  if(db){db.collection("events").where("date",">=",from).onSnapshot(x=>{const m={};x.docs.forEach(doc=>{const d=doc.data();if(d&&d.date)(m[d.date]=m[d.date]||[]).push(d);});
+    Object.keys(trendDocs).concat(Object.keys(m)).forEach(k=>{if(k>=from)trendDocs[k]=m[k]||[];});if(!$("trendsView").hidden)renderTrends();},()=>{});}
+}
+function evTitle(e,stage){
+  if(e.t==="bottle")return "Bottle · "+(+e.oz||0)+" oz";
+  if(e.t==="diaper")return "Diaper · "+(DIAPER[e.kind]||"");
+  if(e.t==="note")return e.note||"Note";
+  const n=EV[e.t].label;
+  if(e.end==null){const live=selDate===cycleToday()?nowIn(stage)-e.at:null;return n+" in progress"+(live!=null&&live>=0?" · "+dur(live):"");}
+  return n+" · "+dur(e.end-e.at);
+}
+function renderQuick(){
+  const q=$("quick");if(q.childElementCount)return;
+  Object.keys(EV).forEach(t=>{const b=document.createElement("button");b.className="qb";
+    b.innerHTML='<span style="background:'+EV[t].bg+'"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+QI[t]+"</svg></span>"+EV[t].label;
+    b.onclick=()=>openEvSheet(t,null);q.appendChild(b);});
+}
+function renderLog(){
+  const host=$("logList");if(!host)return;renderQuick();
+  const stage=stageFor(selDate);host.innerHTML="";
+  const list=events.slice().sort((a,b)=>b.at-a.at);
+  if(!list.length){host.innerHTML='<p class="hint">Nothing logged for this day yet. Tap a button above to add the first entry.</p>';return;}
+  list.forEach(e=>{
+    const c=document.createElement("button");c.className="ev";c.style.setProperty("--dot",EV[e.t].dot);
+    const time=fmt(e.at)+(e.end!=null&&(e.t==="nap"||e.t==="night")?" to "+fmt(e.end):"");
+    c.innerHTML='<span class="dot" aria-hidden="true"></span><span class="evb"><span class="evt"></span><span class="evn"></span>'+(e.note&&e.t!=="note"?'<span class="evx"></span>':"")+"</span>";
+    c.querySelector(".evt").textContent=time;c.querySelector(".evn").textContent=evTitle(e,stage);
+    if(e.note&&e.t!=="note")c.querySelector(".evx").textContent=e.note;
+    c.onclick=()=>openEvSheet(e.t,e);host.appendChild(c);
+    if((e.t==="nap"||e.t==="night")&&e.end==null&&selDate===cycleToday()){
+      const end=document.createElement("button");end.className="btn primary";end.textContent="End "+EV[e.t].label.toLowerCase()+" now";
+      end.onclick=()=>{e.end=Math.max(e.at,nowIn(stage));putEvent(e);renderLog();toast(EV[e.t].label+" ended");};host.appendChild(end);}
+  });
+}
+function lastOz(){
+  const all=[];Object.keys(trendDocs).forEach(ds=>(trendDocs[ds]||[]).forEach(x=>{if(x.t==="bottle")all.push([ds,x.at,+x.oz]);}));
+  events.forEach(x=>{if(x.t==="bottle")all.push([selDate,x.at,+x.oz]);});
+  all.sort((a,b)=>a[0]<b[0]?1:a[0]>b[0]?-1:b[1]-a[1]);return all.length?all[0][2]:3;
+}
+// A logged bottle, nap or night sleep can also mark the matching scheduled block as started, which shifts the day.
+function linkSchedule(t,at){
+  const stage=stageFor(selDate);const r=compute(stage,log,cfg.hold,cfg.grace);const st=log.starts||{},sk=log.skips||{};
+  let best=-1,bd=1e9;
+  stage.blocks.forEach((b,i)=>{if(st[i]!=null||sk[i])return;
+    const ok=t==="bottle"?(b.t==="feed"&&/feed/i.test(b.label)):t==="nap"?b.t==="nap":(b.t==="night"&&i===r.bi);
+    if(!ok)return;const d=Math.abs(r.base[i]-at);if(d<bd){bd=d;best=i;}});
+  if(best<0||bd>(t==="night"?180:90))return false;
+  log.starts=st;log.skips=sk;log.starts[best]=at;saveLog();render();return true;
+}
+function openEvSheet(t,e){
+  const isNew=!e,stage=stageFor(selDate),isToday=selDate===cycleToday();
+  const now=isToday?nowIn(stage):stage.wake+180;
+  const it=e?JSON.parse(JSON.stringify(e)):{id:"e"+Date.now(),t,at:now};
+  if(isNew&&t==="bottle")it.oz=lastOz();
+  if(isNew&&t==="diaper")it.kind="pee";
+  const span=t==="nap"||t==="night";
+  let h='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>';
+  h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt" value="'+toInput(it.at)+'"></label>';
+  if(span)h+='<label class="lbl">End (leave blank if still going)<input type="time" id="evEnd" value="'+(it.end!=null?toInput(it.end):"")+'"></label>';
+  if(span&&isNew&&isToday)h+='<button class="btn" id="evTimer">Start '+EV[t].label.toLowerCase()+' now</button>';
+  if(t==="bottle")h+='<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>';
+  if(t==="diaper")h+='<div class="kinds">'+Object.keys(DIAPER).map(k=>'<button class="btn kind" data-k="'+k+'" aria-pressed="'+(it.kind===k)+'">'+DIAPER[k]+"</button>").join("")+"</div>";
+  h+='<input type="text" id="evNote" placeholder="'+(t==="note"?"What happened?":"Note (optional)")+'" aria-label="Note">';
+  if(isNew&&(t==="bottle"||span))h+='<label class="switch"><input type="checkbox" id="evLink" checked> Update the schedule to match</label>';
+  h+='<div class="btnrow"><button class="btn primary" id="evSave">Save</button>'+(isNew?"":'<button class="btn" id="evDel">Delete</button>')+'<button class="btn ghost" id="evCancel">Cancel</button></div></div>';
+  $("sheetHost").innerHTML=h;
+  $("sh").textContent=(isNew?"Log ":"Edit ")+EV[t].label.toLowerCase();
+  $("evNote").value=it.note||"";
+  const showOz=()=>{$("ozv").textContent=(+it.oz||0)+" oz";};
+  if(t==="bottle"){showOz();$("ozm").onclick=()=>{it.oz=Math.max(0,(+it.oz||0)-0.5);showOz();};$("ozp").onclick=()=>{it.oz=(+it.oz||0)+0.5;showOz();};}
+  document.querySelectorAll(".kind").forEach(b=>b.onclick=()=>{it.kind=b.dataset.k;document.querySelectorAll(".kind").forEach(x=>x.setAttribute("aria-pressed",x===b));});
+  const commit=()=>{
+    if(isNew)events.push(it);else events=events.map(x=>x.id===it.id?it:x);
+    putEvent(it);let msg="Saved";
+    if(isNew&&$("evLink")&&$("evLink").checked&&linkSchedule(t,it.at))msg="Saved, and the schedule moved to match";
+    closeSheet();renderLog();toast(msg);
+  };
+  if($("evTimer"))$("evTimer").onclick=()=>{it.at=nowIn(stage);delete it.end;it.note=$("evNote").value.trim();commit();};
+  $("evSave").onclick=()=>{
+    const m=fromInput($("evAt").value);if(m!=null)it.at=inCycle(stage,m);
+    if(span){const em=fromInput($("evEnd").value);if(em!=null){let x=inCycle(stage,em);if(x<it.at)x+=1440;it.end=x;}else delete it.end;}
+    it.note=$("evNote").value.trim();
+    if(t==="note"&&!it.note){toast("Type a note first");return;}
+    commit();
+  };
+  if($("evDel"))$("evDel").onclick=()=>{events=events.filter(x=>x.id!==it.id);dropEvent(it.id);closeSheet();renderLog();toast("Deleted");};
+  $("evCancel").onclick=closeSheet;$("sbg").onclick=closeSheet;
+}
+
+/* ---------- trends ---------- */
+function dayStats(items){
+  const s={oz:0,bottles:0,nap:0,night:0,diapers:0,wet:0,dirty:0,any:items.length>0};
+  items.forEach(e=>{
+    if(e.t==="bottle"){s.oz+=+e.oz||0;s.bottles++;}
+    else if(e.t==="diaper"){s.diapers++;if(e.kind==="pee"||e.kind==="mixed")s.wet++;if(e.kind==="poo"||e.kind==="mixed")s.dirty++;}
+    else if(e.t==="nap"&&e.end!=null)s.nap+=e.end-e.at;
+    else if(e.t==="night"&&e.end!=null)s.night+=e.end-e.at;
+  });return s;
+}
+function niceMax(m){if(m<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(m)));const r=m/p;return (r<=1?1:r<=2?2:r<=5?5:10)*p;}
+function barChart(title,days,val,fmtv,axis){
+  const W=340,H=150,L=34,B=22,T=8,N=days.length,vals=days.map(val),max=niceMax(Math.max(...vals));
+  const step=(W-L-4)/N,bw=Math.max(3,step*0.62),ph=H-B-T,y=v=>T+ph-(v/max)*ph;
+  let s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="'+title+'">';
+  [0,max/2,max].forEach(g=>{s+='<line x1="'+L+'" x2="'+W+'" y1="'+y(g)+'" y2="'+y(g)+'" stroke="var(--line)" stroke-width="1"/><text x="'+(L-6)+'" y="'+(y(g)+3.5)+'" text-anchor="end" fill="var(--muted)" font-size="10">'+axis(g)+"</text>";});
+  const every=Math.ceil(N/6);
+  days.forEach((d,i)=>{
+    const v=vals[i],x=L+i*step+(step-bw)/2,top=y(v),hh=T+ph-top,r=Math.min(4,bw/2,hh);
+    s+='<g class="col" data-i="'+i+'"><rect x="'+(L+i*step)+'" y="'+T+'" width="'+step+'" height="'+(ph+B)+'" fill="transparent"/>';
+    if(v>0)s+='<path class="bar" d="M'+x+" "+(T+ph)+"V"+(top+r)+"Q"+x+" "+top+" "+(x+r)+" "+top+"H"+(x+bw-r)+"Q"+(x+bw)+" "+top+" "+(x+bw)+" "+(top+r)+"V"+(T+ph)+'Z"/>';
+    s+="</g>";
+    if(i%every===0||i===N-1)s+='<text x="'+(L+i*step+step/2)+'" y="'+(H-6)+'" text-anchor="middle" fill="var(--muted)" font-size="10">'+(d.d.getMonth()+1)+"/"+d.d.getDate()+"</text>";
+  });
+  s+="</svg>";
+  return {html:'<div class="chart"><h3></h3><div class="ro"></div>'+s+"</div>",title,vals,fmtv};
+}
+function renderTrends(){
+  document.querySelectorAll("#ranges button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.r===trRange));
+  const host=$("trendsBody");const base=pdate(cycleToday());const days=[];
+  for(let k=trRange-1;k>=0;k--){const d=new Date(base);d.setDate(d.getDate()-k);const ds=dstr(d);days.push({ds,d,s:dayStats(trendDocs[ds]||[])});}
+  const logged=days.filter(x=>x.s.any);
+  if(!logged.length){host.innerHTML='<p class="hint">No entries in this range yet. Log bottles, diapers, naps and night sleep on the Log tab and your trends will show up here.</p>';return;}
+  const n=logged.length,sum=f=>logged.reduce((a,x)=>a+f(x.s),0),bt=sum(s=>s.bottles),oz=sum(s=>s.oz);
+  const tiles=[["Bottle per day",(oz/n).toFixed(1)+" oz"],["Bottles per day",(bt/n).toFixed(1)],["Per bottle",bt?(oz/bt).toFixed(1)+" oz":"None yet"],
+    ["Nap time per day",dur(sum(s=>s.nap)/n)],["Night sleep",dur(sum(s=>s.night)/n)],["Diapers per day",(sum(s=>s.diapers)/n).toFixed(1),(sum(s=>s.wet)/n).toFixed(1)+" wet · "+(sum(s=>s.dirty)/n).toFixed(1)+" dirty"]];
+  const hrs=v=>(Math.round(v*10)/10)+"h";
+  const charts=[barChart("Bottle total per day",days,x=>x.s.oz,v=>v+" oz",v=>Math.round(v)),
+    barChart("Nap time per day",days,x=>x.s.nap/60,v=>dur(v*60),hrs),
+    barChart("Night sleep",days,x=>x.s.night/60,v=>dur(v*60),hrs),
+    barChart("Diapers per day",days,x=>x.s.diapers,v=>v+" diaper"+(v===1?"":"s"),v=>Math.round(v))];
+  host.innerHTML='<p class="hint">Daily averages across '+n+" logged day"+(n>1?"s":"")+' in the last '+trRange+' days.</p><div class="tiles">'+
+    tiles.map(t=>'<div class="tile"><small>'+t[0]+"</small><b>"+t[1]+"</b>"+(t[2]?"<i>"+t[2]+"</i>":"")+"</div>").join("")+"</div>"+charts.map(c=>c.html).join("");
+  host.querySelectorAll(".chart").forEach((el,ci)=>{
+    const c=charts[ci];el.querySelector("h3").textContent=c.title;const ro=el.querySelector(".ro");
+    const show=i=>{const d=days[i];ro.textContent=(i===days.length-1?"Today":d.d.toLocaleDateString(undefined,{month:"short",day:"numeric"}))+": "+c.fmtv(Math.round(c.vals[i]*100)/100);
+      el.querySelectorAll(".bar").forEach(b=>b.classList.remove("sel"));const bar=el.querySelector('.col[data-i="'+i+'"] .bar');if(bar)bar.classList.add("sel");};
+    el.querySelectorAll(".col").forEach(g=>{const i=+g.dataset.i;g.addEventListener("pointerenter",()=>show(i));g.addEventListener("click",()=>show(i));});
+    show(days.length-1);
+  });
+}
+document.querySelectorAll("#ranges button").forEach(b=>b.onclick=()=>{trRange=+b.dataset.r;renderTrends();});
+
+const VIEWS={day:["dayView","tabDay"],log:["logView","tabLog"],trends:["trendsView","tabTrends"],edit:["editView","tabEdit"]};
+function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});if(w==="day")render();else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
+Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(t).onclick=()=>showTab(k);});
+$("hold").onchange=e=>{cfg.hold=e.target.checked;saveCfg();render();};
+$("grace").onchange=e=>{cfg.grace=e.target.checked?15:0;saveCfg();render();};
+setInterval(()=>{if($("sheetHost").innerHTML)return;const t=cycleToday();if(selDate!==t&&!document.hasFocus()){selDate=t;loadDay();loadEvents();return;}if(!$("dayView").hidden)render();if(!$("logView").hidden)renderLog();},60000);
+let booted=false;
+function gate(show,msg){$("gate").hidden=!show;$("app").hidden=show;if(msg!=null)$("gErr").textContent=msg;}
+window.__noAccess=()=>{gate(true,"This account doesn't have access to Leona's Day. Sign in with one of the two approved accounts.");signOut(auth);};
+$("gForm").addEventListener("submit",ev=>{ev.preventDefault();$("gErr").textContent="";$("gBtn").disabled=true;
+  signInWithEmailAndPassword(auth,$("gEmail").value.trim(),$("gPass").value).catch(err=>{$("gErr").textContent=/invalid|wrong|not-found|user/.test(err.code||"")?"That email and password don't match. Try again.":"Couldn't sign in. Check your connection and try again.";}).finally(()=>{$("gBtn").disabled=false;});});
+onAuthStateChanged(auth,user=>{if(user){gate(false);if(!booted){booted=true;boot();}}else gate(true);});
+})();
+</script>
+</body>
+</html>
