@@ -196,7 +196,7 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
     <div class="loglist" id="logList"></div>
   </section>
   <section id="trendsView" class="ed" hidden>
-    <div id="ranges"><button class="btn" data-r="7">7 days</button><button class="btn" data-r="14">14 days</button><button class="btn" data-r="30">30 days</button></div>
+    <div id="ranges"><button class="btn" data-r="1">Today</button><button class="btn" data-r="7">1 week</button><button class="btn" data-r="30">1 month</button></div>
     <div id="trendsBody" class="ed"></div>
   </section>
   <section id="editView" class="ed" hidden></section>
@@ -235,7 +235,7 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
    "Give the second-to-last feed at the same time each day. Pulling two feeds a little closer together or feeding a bit early to stay on track is fine.",
    "About three hours between the last two feeds helps her take a full feed at bedtime, so a small second-to-last feed is okay."],
   blocks:[B("feed","Start-of-day feed",90),B("nap","Nap",90),
-   B("feed","Feed",30,"Aim for 9:00 am"),B("play","Play",30),B("nap","Nap",120),
+   B("feed","Feed",30,""),B("play","Play",30),B("nap","Nap",120),
    ...FPN(120),...FPN(120),
    B("feed","Feed",30,""),B("play","Play",30),B("nap","Nap",90),
    B("bath","Bath",30),B("feed","Bedtime feed",30),B("night","Bedtime",0),
@@ -248,7 +248,7 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
    "If she takes a small second-to-last feed, the bedtime feed usually makes up for it. About three hours between the two helps her take a full feed at bedtime.",
    "One night feed now, anytime 2:00 to 3:30 am."],
   blocks:[B("feed","Start-of-day feed",90),B("nap","Nap",90),
-   B("feed","Feed",30,"Aim for 9:00 am"),B("play","Play",30),B("nap","Nap",120),
+   B("feed","Feed",30,""),B("play","Play",30),B("nap","Nap",120),
    ...FPN(120),
    B("feed","Feed",30),B("play","Play",30),B("nap","Nap",90),
    B("feed","Feed",30,""),B("play","Play",30),B("nap","Nap",90),
@@ -386,7 +386,7 @@ function computePart(stage,st,sk,hold,grace,endAt,en){
 /* ---------- storage: shared db when available, this browser otherwise ---------- */
 let db=null,unDay=null;
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
-function adopt(d){if(!d||!d.stages)return;d.stages.forEach(st=>(st.blocks||[]).forEach(b=>{if(/^Second-to-last feed/i.test(b.note||""))b.note="";}));if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
+function adopt(d){if(!d||!d.stages)return;d.stages.forEach(st=>(st.blocks||[]).forEach(b=>{if(/^(Second-to-last feed|Aim for 9:00)/i.test(b.note||""))b.note="";}));if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
 async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main").set(JSON.parse(JSON.stringify(cfg)));}catch(e){toast("Couldn't save the schedule. Try again in a moment.");}}}
 let saving=Promise.resolve();
 let lastLog=null;
@@ -467,7 +467,7 @@ function render(){
     const chips=[];
     if(events.some(x=>x.blk===i&&x.vd))chips.push('<span class="chip">VD</span>');
     if(logged){if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
-    const sh=r.base[i]-r.plan[i];if(!logged&&sh!==0&&!sk)chips.push('<span class="chip late">'+(sh>0?"+":"−")+dur(sh)+"</span>");
+    const sh=r.s[i]-r.plan[i];if(sh!==0&&!sk)chips.push('<span class="chip late">'+(sh>0?"+":"−")+dur(sh)+"</span>");
     if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
     if(sk)chips.push('<span class="chip">Skipped</span>');
     // length only; the clock times are already on the left. A live block counts up instead.
@@ -746,18 +746,20 @@ function renderTrends(){
   const any=days.filter(x=>x.s.any);
   if(!any.length){host.innerHTML='<p class="hint">No entries in this range yet. Log bottles, diapers, naps and night sleep on the Log tab and your trends will show up here.</p>';return;}
   // today is still in progress, so it only counts toward the averages when no full day is logged yet
-  const full=any.filter(x=>x.ds!==cycleToday()),partial=!full.length,logged=partial?any:full;
+  const one=trRange===1,full=any.filter(x=>x.ds!==cycleToday()),logged=one||!full.length?any:full;
   const n=logged.length,sum=f=>logged.reduce((a,x)=>a+f(x.s),0),bt=sum(s=>s.bottles),oz=sum(s=>s.oz);
   const r1=v=>Math.round(v*10)/10;
-  const tiles=[["Ounces per day",r1(oz/n)+" oz",bt?r1(bt/n)+" bottles · "+r1(oz/bt)+" oz each":"No bottles logged"],
-    ["Nap time per day",dur(sum(s=>s.nap)/n)],["Night sleep",dur(sum(s=>s.night)/n)],["Diapers per day",(sum(s=>s.diapers)/n).toFixed(1),(sum(s=>s.wet)/n).toFixed(1)+" wet · "+(sum(s=>s.dirty)/n).toFixed(1)+" dirty"]];
+  const pd=one?" today":" per day";
+  const tiles=[["Ounces"+pd,r1(oz/n)+" oz",bt?r1(bt/n)+" bottles · "+r1(oz/bt)+" oz each":"No bottles logged"],
+    ["Nap time"+pd,dur(sum(s=>s.nap)/n)],["Night sleep",dur(sum(s=>s.night)/n)],["Diapers"+pd,(sum(s=>s.diapers)/n).toFixed(1),(sum(s=>s.wet)/n).toFixed(1)+" wet · "+(sum(s=>s.dirty)/n).toFixed(1)+" dirty"]];
   const hrs=v=>(Math.round(v*10)/10)+"h";
   const charts=[barChart("Ounces per day",days,x=>x.s.oz,v=>v+" oz",v=>Math.round(v)),
     barChart("Nap time per day",days,x=>x.s.nap/60,v=>dur(v*60),hrs),
     barChart("Night sleep",days,x=>x.s.night/60,v=>dur(v*60),hrs),
     barChart("Diapers per day",days,x=>x.s.diapers,v=>v+" diaper"+(v===1?"":"s"),v=>Math.round(v))];
-  host.innerHTML='<p class="hint">'+(partial?"Today so far. Averages start once a full day is logged.":"Daily averages across "+n+" full day"+(n>1?"s":"")+" in the last "+trRange+" days. Today counts once the day is over.")+'</p><div class="tiles">'+
-    tiles.map(t=>'<div class="tile"><small>'+t[0]+"</small><b>"+t[1]+"</b>"+(t[2]?"<i>"+t[2]+"</i>":"")+"</div>").join("")+"</div>"+charts.map(c=>c.html).join("");
+  host.innerHTML='<div class="tiles">'+
+    tiles.map(t=>'<div class="tile"><small>'+t[0]+"</small><b>"+t[1]+"</b>"+(t[2]?"<i>"+t[2]+"</i>":"")+"</div>").join("")+"</div>"+(one?"":charts.map(c=>c.html).join(""));
+  if(one)return;
   host.querySelectorAll(".chart").forEach((el,ci)=>{
     const c=charts[ci];el.querySelector("h3").textContent=c.title;const ro=el.querySelector(".ro");
     const show=i=>{const d=days[i];ro.textContent=(i===days.length-1?"Today":d.d.toLocaleDateString(undefined,{month:"short",day:"numeric"}))+": "+c.fmtv(Math.round(c.vals[i]*100)/100);
