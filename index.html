@@ -108,7 +108,9 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
 .ed{display:flex;flex-direction:column;gap:14px}
 .ed .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
 .ed label{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ed label.switch{flex-direction:row;align-items:center;font-size:.88rem;letter-spacing:0;text-transform:none}
+.tpick{display:grid;grid-template-columns:64px minmax(0,1fr) 64px;gap:8px}.tpick input{text-align:center;font-size:1.05rem}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.grid2 input,.grid2 select{width:100%}
 .erow{display:grid;grid-template-columns:minmax(0,1fr) 96px 64px auto;gap:6px;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .erow .del{border:0;background:transparent;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:6px}
 .ehead{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:0;padding:0}
@@ -144,6 +146,20 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
 .chart svg{width:100%;height:auto;display:block}
 .chart .bar{fill:var(--accent)} .chart .bar.sel{fill:var(--fg)} .chart .col{cursor:pointer}
 .sheet{max-height:88vh;overflow:auto}
+.hright{display:flex;align-items:center;gap:8px}
+.gear{border:1px solid var(--line);background:var(--surface);color:var(--muted);width:38px;height:38px;border-radius:50%;display:grid;place-items:center;cursor:pointer;padding:0}
+.gear[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.next{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"k go" "n go" "s go";column-gap:12px;align-items:center;text-align:left;width:100%;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;cursor:pointer;color:var(--fg);font-family:var(--body)}
+.next .nk{grid-area:k;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.next .nn{grid-area:n;font-family:var(--display);font-size:1.35rem;line-height:1.25}
+.next .ns{grid-area:s;font-size:.82rem;color:var(--muted)}
+.next .ngo{grid-area:go;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:.9rem;border-radius:999px;padding:8px 14px;white-space:nowrap}
+.ed label.set{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;text-transform:none;letter-spacing:0;font-size:inherit;color:var(--fg);cursor:pointer}
+.set input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--accent)}
+.set b{font-weight:600;font-size:.95rem}
+.set span{grid-column:2;font-size:.85rem;color:var(--muted)}
+.ed label.set+label.set{padding-top:12px;border-top:1px solid var(--line)}
+.diaper-hint{margin:0;font-size:.85rem;color:var(--muted)}
 @media (max-width:380px){ .erow{grid-template-columns:minmax(0,1fr) 84px 56px auto} }
 @media (prefers-reduced-motion: no-preference){ .sheet{animation:up .18s ease-out} @keyframes up{from{transform:translateY(20px);opacity:.6}} }
 </style>
@@ -158,26 +174,21 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
       <h1>Leona's Day</h1>
       <div class="age" id="age"></div>
     </div>
-    <span class="stage-pill" id="stagePill"></span>
+    <div class="hright"><span class="stage-pill" id="stagePill"></span><button class="gear" id="tabEdit" aria-selected="false" aria-label="Settings and schedule editor"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
   </header>
   <div class="tabs" role="tablist">
     <button role="tab" id="tabDay" aria-selected="true">Schedule</button>
     <button role="tab" id="tabLog" aria-selected="false">Log</button>
     <button role="tab" id="tabTrends" aria-selected="false">Trends</button>
-    <button role="tab" id="tabEdit" aria-selected="false">Edit</button>
   </div>
+  <div class="days" id="days"></div>
   <section id="dayView" class="ed">
-    <div class="days" id="days"></div>
     <div class="preview" id="preview" hidden></div>
-    <div class="toolbar">
-      <div class="r"><label class="switch"><input type="checkbox" id="hold"> Keep bedtime fixed</label><span id="summary"></span></div>
-      <label class="switch"><input type="checkbox" id="grace"> 15-minute grace period</label>
-    </div>
+    <button class="next" id="nextCard" hidden><span class="nk" id="nextKind"></span><span class="nn" id="nextName"></span><span class="ns" id="summary"></span><span class="ngo">Log it</span></button>
     <details class="tips" id="tips"><summary>Tips for this stage</summary><ul id="tipList"></ul></details>
     <div class="tl" id="tl"></div>
   </section>
   <section id="logView" class="ed" hidden>
-    <div class="days" id="logDays"></div>
     <div class="quick" id="quick"></div>
     <div class="loglist" id="logList"></div>
   </section>
@@ -214,7 +225,7 @@ const GENERAL_TIPS=["Grace period: starting a block up to 15 minutes early or la
  "Early wake: if she wakes 30 or more minutes before the start-of-day feed, pause 2 to 3 times, feed, and put her back down until the scheduled feed. Within 30 minutes, pause, then feed and treat that as the start-of-day feed."];
 const B=(t,label,d,note,at)=>{const b={t,label,d,note:note||""};if(at!=null)b.at=at;return b;};
 const FPN=(nap)=>[B("feed","Feed",30),B("play","Play",30),B("nap","Nap",nap)];
-const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:15,stages:[
+const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
  {id:"s1",name:"2 to 4 weeks",fromDay:0,toDay:27,wake:360,tips:[
    "Start the second feed of the day at 9:00 am whenever you can.",
    "Keep every nap under 2.5 hours.",
@@ -305,8 +316,11 @@ function dstr(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDat
 function pdate(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d);}
 function clock(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 // A day runs from the stage's morning start to the same time next morning, so 1 am belongs to the previous date.
-function cycleToday(){const n=new Date();const d=new Date(n.getFullYear(),n.getMonth(),n.getDate());const ds=dstr(d);if(clock()<stageFor(ds).wake){d.setDate(d.getDate()-1);}return dstr(d);}
-function nowIn(stage){const c=clock();return c<stage.wake?c+1440:c;}
+function cycleToday(){const n=new Date();const d=new Date(n.getFullYear(),n.getMonth(),n.getDate());const ds=dstr(d);if(clock()<DAYCUT){d.setDate(d.getDate()-1);}return dstr(d);}
+const DAYCUT=240;
+function nowIn(stage){const c=clock();return c<DAYCUT?c+1440:c;}
+// a typed clock time lands on whichever day is closest to the time it relates to
+function near(m,ref){return Math.abs(m+1440-ref)<Math.abs(m-ref)?m+1440:m;}
 function fmt(m){m=((Math.round(m)%1440)+1440)%1440;let h=Math.floor(m/60),mi=m%60;const ap=h<12?"am":"pm";h=h%12||12;return h+":"+pad(mi)+" "+ap;}
 function toInput(m){m=((Math.round(m)%1440)+1440)%1440;return pad(Math.floor(m/60))+":"+pad(m%60);}
 function fromInput(v){if(!v)return null;const[h,m]=v.split(":").map(Number);return h*60+m;}
@@ -355,7 +369,7 @@ function compute(stage,lg,hold,grace){
 /* ---------- storage: shared db when available, this browser otherwise ---------- */
 let db=null,unDay=null;
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
-function adopt(d){if(!d||!d.stages)return;if((d.version||1)<VERSION){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=15;}
+function adopt(d){if(!d||!d.stages)return;if((d.version||1)<VERSION){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
 async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main").set(JSON.parse(JSON.stringify(cfg)));}catch(e){toast("Couldn't save the schedule. Try again in a moment.");}}}
 let saving=Promise.resolve();
 let lastLog=null;
@@ -381,7 +395,7 @@ async function boot(){
 
 /* ---------- rendering ---------- */
 function renderDays(){
-  ["days","logDays"].forEach(hid=>{
+  ["days"].forEach(hid=>{
   const host=$(hid);host.innerHTML="";const today=cycleToday();const base=pdate(today);
   for(let k=-3;k<=3;k++){const d=new Date(base);d.setDate(d.getDate()+k);const ds=dstr(d);
     const b=document.createElement("button");b.className="day";b.setAttribute("aria-pressed",ds===selDate);
@@ -394,20 +408,22 @@ function render(){
   const stage=stageFor(selDate),n=ageDays(selDate);
   $("age").textContent=ageText(n);
   $("stagePill").textContent=stage.name;
-  $("hold").checked=!!cfg.hold;$("grace").checked=!!cfg.grace;
   renderDays();
   const today=cycleToday(),isToday=selDate===today;
   const pv=$("preview");
   if(stage.id!==stageFor(today).id){pv.hidden=false;pv.innerHTML="Showing the <b></b> schedule, which starts "+(selDate>today?"on its own when she reaches that age.":"earlier.");pv.querySelector("b").textContent=stage.name;}
   else if(stage.placeholder){pv.hidden=false;pv.textContent="This stage is a placeholder. Replace it with your app's schedule in Edit schedule.";}
   else pv.hidden=true;
-  const tips=(stage.tips||[]).concat(stage.placeholder?[]:GENERAL_TIPS);
+  const tips=(stage.tips||[]).concat(stage.placeholder?[]:GENERAL_TIPS.filter((t,k)=>k>0||cfg.grace));
   $("tips").hidden=!tips.length;$("tipList").innerHTML="";tips.forEach(t=>{const li=document.createElement("li");li.textContent=t;$("tipList").appendChild(li);});
   const r=compute(stage,log,cfg.hold,cfg.grace);
   const tl=$("tl");tl.innerHTML="";
   const now=nowIn(stage);
   const bi=r.bi>=0?r.bi:r.s.length-1;const shiftBed=r.base[bi]-r.plan[bi];
-  $("summary").textContent=shiftBed===0?"Bedtime on schedule":(shiftBed>0?"Bedtime "+dur(shiftBed)+" later":"Bedtime "+dur(shiftBed)+" earlier");
+  $("summary").textContent=shiftBed===0?"Bedtime on schedule, "+fmt(r.base[bi]):(shiftBed>0?"Bedtime "+dur(shiftBed)+" later, ":"Bedtime "+dur(shiftBed)+" earlier, ")+(shiftBed?fmt(r.base[bi]):"");
+  let ni=-1;if(isToday)stage.blocks.forEach((b,i)=>{if(ni<0&&b.t!=="grace"&&(log.starts||{})[i]==null&&!(log.skips||{})[i]&&r.ends[i]>now)ni=i;});
+  $("nextCard").hidden=ni<0;
+  if(ni>=0){const b=stage.blocks[ni];$("nextKind").textContent=(r.base[ni]<=now?"Now":"Up next")+" · "+fmt(r.s[ni]);$("nextName").textContent=b.label;$("nextCard").onclick=()=>openSheet(ni,stage,r);}
   let nowPlaced=false;
   stage.blocks.forEach((b,i)=>{
     const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
@@ -429,7 +445,7 @@ function render(){
     card.querySelector(".name").textContent=b.label;if(b.note)card.querySelector(".note").textContent=b.note;
     card.onclick=()=>openSheet(i,stage,r);
     tl.appendChild(card);
-    if(live&&!nowPlaced){nowPlaced=true;requestAnimationFrame(()=>{const f=Math.min(1,(now-r.base[i])/Math.max(1,end-r.base[i]));const y=card.offsetTop+f*card.offsetHeight;const nl=document.createElement("div");nl.className="nowline";nl.style.top=y+"px";nl.innerHTML="<span>"+fmt(now)+"</span>";tl.appendChild(nl);});}
+    if(live&&!nowPlaced){nowPlaced=true;requestAnimationFrame(()=>{if(!card.isConnected)return;const f=Math.min(1,(now-r.base[i])/Math.max(1,end-r.base[i]));const y=card.offsetTop+f*card.offsetHeight;const nl=document.createElement("div");nl.className="nowline";nl.style.top=y+"px";nl.innerHTML="<span>"+fmt(now)+"</span>";tl.appendChild(nl);});}
   });
 }
 
@@ -437,19 +453,29 @@ function render(){
 function closeSheet(){$("sheetHost").innerHTML="";}
 function openSheet(i,stage,r){
   const b=stage.blocks[i],logged=(log.starts||{})[i]!=null,sk=!!(log.skips||{})[i];
-  const isToday=selDate===cycleToday();
+  const isToday=selDate===cycleToday(),bottle=isBottle(b),linked=events.find(x=>x.blk===i);
+  let pick=r.s[i],oz=linked&&linked.oz!=null?+linked.oz:lastOz();
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2><p id="sp"></p>'+
+   (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>':"")+
    (isToday?'<button class="btn primary" id="sNow">Started now</button>':"")+
-   '<div class="btnrow"><input type="time" id="sTime" value="'+toInput(r.s[i])+'" aria-label="Start time"><button class="btn" id="sSet">Set start time</button></div>'+
+   '<div class="tpick"><button class="btn" id="tm5" aria-label="5 minutes earlier">−5</button><input type="time" id="sTime" aria-label="Start time"><button class="btn" id="tp5" aria-label="5 minutes later">+5</button></div>'+
+   '<button class="btn'+(isToday?"":" primary")+'" id="sSet"></button>'+
    '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skipped this")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'<button class="btn ghost" id="sClose">Close</button></div></div>';
-  $("sh").textContent=b.label+" · "+fmt(r.s[i]);
-  $("sp").textContent="Planned for "+fmt(r.plan[i])+". "+(b.at!=null?"Logging this moves what comes after it until the next fixed time.":"Everything after this moves with the time you log"+(cfg.grace?", unless it's within 15 minutes of when it was due.":"."));
-  const set=m=>{m=inCycle(stage,m);log.starts=log.starts||{};log.skips=log.skips||{};log.starts[i]=m;delete log.skips[i];saveLog();closeSheet();render();toast("Logged "+b.label.toLowerCase()+" at "+fmt(m));};
-  if($("sNow"))$("sNow").onclick=()=>set(clock());
-  $("sSet").onclick=()=>{const m=fromInput($("sTime").value);if(m!=null)set(m);};
-  $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};if(sk)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];}saveLog();closeSheet();render();};
-  if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];saveLog();closeSheet();render();};
+  $("sh").textContent=b.label+(logged?" · started "+fmt(r.s[i]):" · "+fmt(r.s[i]));
+  $("sp").textContent="Planned for "+fmt(r.plan[i])+". "+(b.at!=null?"Logging this moves what comes after it until the next fixed time.":"Everything after this moves with the time you log"+(cfg.grace?", unless it's within 15 minutes of when it was due.":"."))+(kindFor(b)?" It also goes in the log.":"");
+  const ti=$("sTime");
+  const label=()=>{$("sSet").textContent="Started at "+fmt(pick);};
+  const showPick=()=>{ti.value=toInput(pick);label();};
+  const upd=()=>{const m=fromInput(ti.value);if(m!=null){pick=near(m,r.base[i]);label();}};
+  showPick();ti.addEventListener("input",upd);ti.addEventListener("change",upd);
+  $("tm5").onclick=()=>{pick-=5;showPick();};$("tp5").onclick=()=>{pick+=5;showPick();};
+  if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.5);so();};$("ozp").onclick=()=>{oz+=0.5;so();};}
+  const go=at=>{const k=setStart(i,at,oz);closeSheet();toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
+  if($("sNow"))$("sNow").onclick=()=>go(near(clock(),r.base[i]));
+  $("sSet").onclick=()=>{upd();go(pick);};
+  $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};if(sk)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];events=events.filter(x=>x.blk!==i);saveEvents();}saveLog();closeSheet();render();renderLog();};
+  if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();closeSheet();render();renderLog();toast("Entry cleared");};
   $("sClose").onclick=closeSheet;$("sbg").onclick=closeSheet;
 }
 let tt=null;function toast(m){const h=$("toastHost");h.innerHTML='<div class="toast" role="status"></div>';h.firstChild.textContent=m;clearTimeout(tt);tt=setTimeout(()=>h.innerHTML="",2400);}
@@ -467,7 +493,8 @@ function renderEdit(){
     '<button class="del" id="ex'+i+'" aria-label="Remove">✕</button><div class="etime">'+fmt(plan.base[i])+" to "+fmt(plan.ends[i])+(b.d===0?" · fills until the next block":"")+'</div>'+
     '<input type="text" id="en'+i+'" placeholder="Note (optional)" aria-label="Note" style="grid-column:1/-1">'+
     '<label class="efix" style="text-transform:none;letter-spacing:0;flex-direction:row"><input type="checkbox" id="ef'+i+'"'+(b.at!=null?" checked":"")+'> Always starts at <input type="time" id="ea'+i+'" value="'+(b.at!=null?toInput(b.at):"")+'"'+(b.at!=null?"":" disabled")+'></label></div>';});
-  v.innerHTML='<div class="card"><div class="grid2"><label>Birth date<input type="date" id="eBirth" value="'+draft.birth+'"></label><label>Stage<select id="eStage">'+draft.stages.map(s=>'<option value="'+s.id+'"'+(s.id===st.id?" selected":"")+">"+s.name.replace(/</g,"")+"</option>").join("")+'</select></label></div></div>'+
+  v.innerHTML='<div class="card"><label class="set"><input type="checkbox" id="hold"'+(cfg.hold?" checked":"")+'><b>Keep bedtime fixed</b><span>When something runs late, shorten the next naps so bedtime stays put. Off: everything after a late block moves later, bedtime included.</span></label><label class="set"><input type="checkbox" id="grace"'+(cfg.grace?" checked":"")+'><b>Ignore small delays (15 minutes)</b><span>Moms on Call\'s grace period. A block that starts within 15 minutes of its planned time won\'t move the rest of the day. Off: every minute counts.</span></label></div>'+
+   '<div class="card"><div class="grid2"><label>Birth date<input type="date" id="eBirth" value="'+draft.birth+'"></label><label>Stage<select id="eStage">'+draft.stages.map(s=>'<option value="'+s.id+'"'+(s.id===st.id?" selected":"")+">"+s.name.replace(/</g,"")+"</option>").join("")+'</select></label></div></div>'+
    '<div class="card"><div class="grid2"><label>Stage name<input type="text" id="eName"></label><label>Day starts<input type="time" id="eWake" value="'+toInput(st.wake)+'"></label><label>From day of life<input type="number" id="eFrom" min="0" value="'+st.fromDay+'"></label><label>To day of life<input type="number" id="eTo" min="0" value="'+st.toDay+'"></label></div></div>'+
    '<div class="card"><div class="erow ehead"><span>Block</span><span>Type</span><span>Min</span><span></span></div>'+rows+
    '<p class="hint">Set minutes to 0 for a block that should fill the time until the next one, like bedtime.</p>'+
@@ -481,6 +508,8 @@ function renderEdit(){
     $("ef"+i).onchange=e=>{if(e.target.checked)b.at=plan.base[i];else delete b.at;renderEdit();};
     $("ea"+i).onchange=e=>{const m=fromInput(e.target.value);if(m!=null){b.at=inCycle(st,m);renderEdit();}};
     $("ex"+i).onclick=()=>{st.blocks.splice(i,1);renderEdit();};});
+  $("hold").onchange=e=>{cfg.hold=draft.hold=e.target.checked;saveCfg();};
+  $("grace").onchange=e=>{cfg.grace=draft.grace=e.target.checked?15:0;saveCfg();};
   $("eBirth").onchange=e=>{draft.birth=e.target.value||draft.birth;};
   $("eStage").onchange=e=>{editStageId=e.target.value;renderEdit();};
   $("eName").oninput=e=>{st.name=e.target.value;};
@@ -502,18 +531,25 @@ const QI={bottle:'<path d="M10 2h4v3l2 3v12a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8l2-3
 const DIAPER={pee:"Pee",poo:"Poo",mixed:"Mixed",dry:"Dry"};
 let events=[],unEv=null,trendDocs={},trRange=7;let unCfg=null;
 function cacheEv(){LS.set("ev:"+selDate,{date:selDate,items:events});trendDocs[selDate]=events;}
+let evKnown={};
 function loadEvents(){
   if(unEv){unEv();unEv=null;}
-  const ds=selDate;events=((LS.get("ev:"+ds)||{}).items)||[];renderLog();
-  if(db){unEv=db.collection("events").where("date","==",ds).onSnapshot(x=>{events=x.docs.map(d=>{const v=JSON.parse(JSON.stringify(d.data()));delete v.date;return v;});cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();},()=>{});}
+  const ds=selDate;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});renderLog();
+  if(db){unEv=db.collection("events").where("date","==",ds).onSnapshot(x=>{if(x.metadata.hasPendingWrites)return;const k={};
+    events=x.docs.map(d=>{const v=JSON.parse(JSON.stringify(d.data()));delete v.date;k[v.id]=JSON.stringify(v);return v;});
+    evKnown=k;cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();},()=>{});}
 }
-function putEvent(it){cacheEv();if(db)db.doc("events/"+it.id).set(JSON.parse(JSON.stringify(Object.assign({},it,{date:selDate})))).catch(()=>toast("Couldn't save that entry. Check your connection."));}
-function dropEvent(id){cacheEv();if(db)db.doc("events/"+id).delete().catch(()=>toast("Couldn't delete that entry. Check your connection."));}
+// one Firestore document per entry: write only what changed, so two phones never overwrite each other
+function saveEvents(){cacheEv();if(!db)return;const ds=selDate,cur={};
+  events.forEach(e=>{cur[e.id]=JSON.stringify(e);if(evKnown[e.id]!==cur[e.id])db.doc("events/"+e.id).set(Object.assign(JSON.parse(cur[e.id]),{date:ds})).catch(()=>toast("Couldn't save that entry. Check your connection."));});
+  Object.keys(evKnown).forEach(id=>{if(!(id in cur))db.doc("events/"+id).delete().catch(()=>toast("Couldn't delete that entry. Check your connection."));});
+  evKnown=cur;}
+function patchDay(ds,x){LS.set("ev:"+ds,{date:ds,items:trendDocs[ds]||[]});if(db)db.doc("events/"+x.id).set({end:x.end},{merge:true}).catch(()=>{});}
 function subTrends(){
   const base=pdate(cycleToday());base.setDate(base.getDate()-40);const from=dstr(base);
   for(let k=0;k<42;k++){const d=new Date(base);d.setDate(d.getDate()+k);const v=LS.get("ev:"+dstr(d));if(v&&v.items)trendDocs[dstr(d)]=v.items;}
-  if(db){db.collection("events").where("date",">=",from).onSnapshot(x=>{const m={};x.docs.forEach(doc=>{const d=doc.data();if(d&&d.date)(m[d.date]=m[d.date]||[]).push(d);});
-    Object.keys(trendDocs).concat(Object.keys(m)).forEach(k=>{if(k>=from)trendDocs[k]=m[k]||[];});if(!$("trendsView").hidden)renderTrends();},()=>{});}
+  if(db){db.collection("events").where("date",">=",from).onSnapshot(x=>{const m={};x.docs.forEach(doc=>{const d=doc.data();if(d&&d.date)(m[d.date]=m[d.date]||[]).push(JSON.parse(JSON.stringify(d)));});
+    Object.keys(trendDocs).concat(Object.keys(m)).forEach(k=>{if(k>=from&&k!==selDate)trendDocs[k]=m[k]||[];});if(!$("trendsView").hidden)renderTrends();},()=>{});}
 }
 function evTitle(e,stage){
   if(e.t==="bottle")return "Bottle · "+(+e.oz||0)+" oz";
@@ -543,7 +579,7 @@ function renderLog(){
     c.onclick=()=>openEvSheet(e.t,e);host.appendChild(c);
     if((e.t==="nap"||e.t==="night")&&e.end==null&&selDate===cycleToday()){
       const end=document.createElement("button");end.className="btn primary";end.textContent="End "+EV[e.t].label.toLowerCase()+" now";
-      end.onclick=()=>{e.end=Math.max(e.at,nowIn(stage));putEvent(e);renderLog();toast(EV[e.t].label+" ended");};host.appendChild(end);}
+      end.onclick=()=>{e.end=Math.max(e.at,nowIn(stage));saveEvents();renderLog();toast(EV[e.t].label+" ended");};host.appendChild(end);}
   });
 }
 function lastOz(){
@@ -551,53 +587,71 @@ function lastOz(){
   events.forEach(x=>{if(x.t==="bottle")all.push([selDate,x.at,+x.oz]);});
   all.sort((a,b)=>a[0]<b[0]?1:a[0]>b[0]?-1:b[1]-a[1]);return all.length?all[0][2]:3;
 }
-// A logged bottle, nap or night sleep can also mark the matching scheduled block as started, which shifts the day.
+function isBottle(b){return b.t==="feed"&&/feed/i.test(b.label);}
+function kindFor(b){return isBottle(b)?"bottle":b.t==="nap"?"nap":b.t==="night"?"night":null;}
+function newId(){return "e"+Date.now()+Math.random().toString(36).slice(2,6);}
+function prevDs(ds){const d=pdate(ds);d.setDate(d.getDate()-1);return dstr(d);}
+function closeOpenNaps(at){events.forEach(e=>{if(e.t==="nap"&&e.end==null&&e.at<at)e.end=at;});}
+// Logging a scheduled block writes the matching log entry (bottle, nap or night sleep) and keeps the two linked.
+function setStart(i,at,oz){
+  const stage=stageFor(selDate),b=stage.blocks[i],k=kindFor(b);
+  log.starts=log.starts||{};log.skips=log.skips||{};log.starts[i]=at;delete log.skips[i];saveLog();
+  closeOpenNaps(at);
+  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i};events.push(e);}e.at=at;if(k==="bottle")e.oz=oz;}
+  if(i===0){const pd=prevDs(selDate);(trendDocs[pd]||[]).forEach(x=>{if(x.t==="night"&&x.end==null){x.end=at+1440;patchDay(pd,x);}});}
+  saveEvents();render();renderLog();
+  return k;
+}
+// Logging a bottle, nap or night sleep from the Log tab marks the closest matching scheduled block as started.
 function linkSchedule(t,at){
   const stage=stageFor(selDate);const r=compute(stage,log,cfg.hold,cfg.grace);const st=log.starts||{},sk=log.skips||{};
   let best=-1,bd=1e9;
-  stage.blocks.forEach((b,i)=>{if(st[i]!=null||sk[i])return;
-    const ok=t==="bottle"?(b.t==="feed"&&/feed/i.test(b.label)):t==="nap"?b.t==="nap":(b.t==="night"&&i===r.bi);
+  stage.blocks.forEach((b,i)=>{if(st[i]!=null||sk[i]||events.some(x=>x.blk===i))return;
+    const ok=t==="bottle"?isBottle(b):t==="nap"?b.t==="nap":(b.t==="night"&&i===r.bi);
     if(!ok)return;const d=Math.abs(r.base[i]-at);if(d<bd){bd=d;best=i;}});
-  if(best<0||bd>(t==="night"?180:90))return false;
-  log.starts=st;log.skips=sk;log.starts[best]=at;saveLog();render();return true;
+  if(best<0||bd>(t==="night"?180:90))return -1;
+  log.starts=st;log.skips=sk;log.starts[best]=at;saveLog();return best;
 }
 function openEvSheet(t,e){
   const isNew=!e,stage=stageFor(selDate),isToday=selDate===cycleToday();
   const now=isToday?nowIn(stage):stage.wake+180;
-  const it=e?JSON.parse(JSON.stringify(e)):{id:"e"+Date.now(),t,at:now};
+  const it=e?JSON.parse(JSON.stringify(e)):{id:newId(),t,at:now};
   if(isNew&&t==="bottle")it.oz=lastOz();
-  if(isNew&&t==="diaper")it.kind="pee";
   const span=t==="nap"||t==="night";
   let h='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>';
   h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt" value="'+toInput(it.at)+'"></label>';
   if(span)h+='<label class="lbl">End (leave blank if still going)<input type="time" id="evEnd" value="'+(it.end!=null?toInput(it.end):"")+'"></label>';
   if(span&&isNew&&isToday)h+='<button class="btn" id="evTimer">Start '+EV[t].label.toLowerCase()+' now</button>';
   if(t==="bottle")h+='<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div>';
+  if(t==="diaper"&&isNew)h+='<p class="diaper-hint">Tap one to save it.</p>';
   if(t==="diaper")h+='<div class="kinds">'+Object.keys(DIAPER).map(k=>'<button class="btn kind" data-k="'+k+'" aria-pressed="'+(it.kind===k)+'">'+DIAPER[k]+"</button>").join("")+"</div>";
   h+='<input type="text" id="evNote" placeholder="'+(t==="note"?"What happened?":"Note (optional)")+'" aria-label="Note">';
   if(isNew&&(t==="bottle"||span))h+='<label class="switch"><input type="checkbox" id="evLink" checked> Update the schedule to match</label>';
-  h+='<div class="btnrow"><button class="btn primary" id="evSave">Save</button>'+(isNew?"":'<button class="btn" id="evDel">Delete</button>')+'<button class="btn ghost" id="evCancel">Cancel</button></div></div>';
+  h+='<div class="btnrow"><button class="btn primary" id="evSave"'+(isNew&&t==="diaper"?" hidden":"")+'>Save</button>'+(isNew?"":'<button class="btn" id="evDel">Delete</button>')+'<button class="btn ghost" id="evCancel">Cancel</button></div></div>';
   $("sheetHost").innerHTML=h;
   $("sh").textContent=(isNew?"Log ":"Edit ")+EV[t].label.toLowerCase();
   $("evNote").value=it.note||"";
   const showOz=()=>{$("ozv").textContent=(+it.oz||0)+" oz";};
   if(t==="bottle"){showOz();$("ozm").onclick=()=>{it.oz=Math.max(0,(+it.oz||0)-0.5);showOz();};$("ozp").onclick=()=>{it.oz=(+it.oz||0)+0.5;showOz();};}
-  document.querySelectorAll(".kind").forEach(b=>b.onclick=()=>{it.kind=b.dataset.k;document.querySelectorAll(".kind").forEach(x=>x.setAttribute("aria-pressed",x===b));});
+  document.querySelectorAll(".kind").forEach(b=>b.onclick=()=>{it.kind=b.dataset.k;document.querySelectorAll(".kind").forEach(x=>x.setAttribute("aria-pressed",x===b));if(isNew)$("evSave").click();});
   const commit=()=>{
-    if(isNew)events.push(it);else events=events.map(x=>x.id===it.id?it:x);
-    putEvent(it);let msg="Saved";
-    if(isNew&&$("evLink")&&$("evLink").checked&&linkSchedule(t,it.at))msg="Saved, and the schedule moved to match";
-    closeSheet();renderLog();toast(msg);
+    let msg="Saved";
+    if(isNew&&(t==="bottle"||t==="nap"))closeOpenNaps(it.at);
+    if(isNew&&$("evLink")&&$("evLink").checked){const bi=linkSchedule(t,it.at);if(bi>=0){it.blk=bi;msg="Saved, and the schedule moved to match";}}
+    if(!isNew&&it.blk!=null){log.starts=log.starts||{};log.starts[it.blk]=it.at;saveLog();}
+    const k=events.findIndex(x=>x.id===it.id);if(k<0)events.push(it);else events[k]=it;
+    saveEvents();closeSheet();render();renderLog();toast(msg);
   };
   if($("evTimer"))$("evTimer").onclick=()=>{it.at=nowIn(stage);delete it.end;it.note=$("evNote").value.trim();commit();};
   $("evSave").onclick=()=>{
-    const m=fromInput($("evAt").value);if(m!=null)it.at=inCycle(stage,m);
-    if(span){const em=fromInput($("evEnd").value);if(em!=null){let x=inCycle(stage,em);if(x<it.at)x+=1440;it.end=x;}else delete it.end;}
+    const m=fromInput($("evAt").value);if(m!=null)it.at=near(m,it.at);
+    if(span){const em=fromInput($("evEnd").value);if(em!=null){let x=near(em,it.at);if(x<it.at)x+=1440;it.end=x;}else delete it.end;}
     it.note=$("evNote").value.trim();
     if(t==="note"&&!it.note){toast("Type a note first");return;}
+    if(t==="diaper"&&!it.kind){toast("Pick pee, poo, mixed or dry");return;}
     commit();
   };
-  if($("evDel"))$("evDel").onclick=()=>{events=events.filter(x=>x.id!==it.id);dropEvent(it.id);closeSheet();renderLog();toast("Deleted");};
+  if($("evDel"))$("evDel").onclick=()=>{events=events.filter(x=>x.id!==it.id);if(it.blk!=null&&log.starts){delete log.starts[it.blk];saveLog();}saveEvents();closeSheet();render();renderLog();toast("Deleted");};
   $("evCancel").onclick=closeSheet;$("sbg").onclick=closeSheet;
 }
 
@@ -655,10 +709,8 @@ function renderTrends(){
 document.querySelectorAll("#ranges button").forEach(b=>b.onclick=()=>{trRange=+b.dataset.r;renderTrends();});
 
 const VIEWS={day:["dayView","tabDay"],log:["logView","tabLog"],trends:["trendsView","tabTrends"],edit:["editView","tabEdit"]};
-function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});if(w==="day")render();else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
+function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});$("days").hidden=!(w==="day"||w==="log");if(w==="day")render();else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
 Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(t).onclick=()=>showTab(k);});
-$("hold").onchange=e=>{cfg.hold=e.target.checked;saveCfg();render();};
-$("grace").onchange=e=>{cfg.grace=e.target.checked?15:0;saveCfg();render();};
 setInterval(()=>{if($("sheetHost").innerHTML)return;const t=cycleToday();if(selDate!==t&&!document.hasFocus()){selDate=t;loadDay();loadEvents();return;}if(!$("dayView").hidden)render();if(!$("logView").hidden)renderLog();},60000);
 let booted=false;
 function gate(show,msg){$("gate").hidden=!show;$("app").hidden=show;if(msg!=null)$("gErr").textContent=msg;}
