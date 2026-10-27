@@ -138,6 +138,7 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
 .oz{display:grid;grid-template-columns:56px 1fr 56px;gap:10px;align-items:center}
 .oz output{text-align:center;font-family:var(--display);font-size:2rem;font-variant-numeric:tabular-nums}
 .kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kinds.fill{grid-template-columns:1fr 1fr 1fr}
 .vd{margin-top:8px;width:100%}
 .vd[aria-pressed="true"]::after{content:" ✓"}
 .kind[aria-pressed="true"],.vd[aria-pressed="true"],#ranges button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -487,7 +488,7 @@ function render(){
   if(ni>=0){const b=stage.blocks[ni];$("nextKind").textContent=(r.base[ni]<=now?"Now":"Up next")+" · "+fmt(r.s[ni]);$("nextName").textContent=b.label;$("nextCard").onclick=()=>openSheet(ni,stage,r);}
   const spans=[];
   // entries from the Log tab that aren't tied to a block show in the schedule at their time
-  const loose=events.filter(e=>e.blk==null&&e.inst==null&&(e.t==="bottle"||e.t==="nap"||e.t==="play"||e.t==="note")).sort((a,b)=>a.at-b.at);
+  const loose=events.filter(e=>e.blk==null&&e.inst==null&&(e.t==="bottle"||e.t==="nap"||e.t==="play"||e.t==="bath"||e.t==="note"||e.t==="diaper")).sort((a,b)=>a.at-b.at);
   let li=0,prevStart=-1e9,prevEnd=null;
   const addLabel=t=>{const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(t);tl.appendChild(lab);};
   const addLoose=e=>{addLabel(e.at);const c=document.createElement("button");c.className="block b-extra";c.style.setProperty("--dot",EV[e.t].dot);
@@ -543,19 +544,25 @@ function closeSheet(){$("sheetHost").innerHTML="";}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&sheetPersist)try{sheetPersist();}catch(e){}});
 const INST={nap:"Napped",play:"Played",other:"Other"};
 // filling open time: pick what she did, times default to the whole gap
-function openGapSheet(a,z){
+// filling open time or a skipped slot: feed and diaper open their usual sheets, the rest take a time range
+const FILL={bottle:"Feed",nap:"Nap",play:"Play",bath:"Bath",diaper:"Diaper",note:"Other"};
+function openGapSheet(a,z,pre){
   let t=null;const h=$("sheetHost");
-  h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh">Open time · '+fmt(a)+'</h2>'+
-   '<div class="kinds inst"><p class="lbl">She</p>'+Object.keys(INST).map(k=>'<button class="btn ik" data-k="'+k+'">'+INST[k]+"</button>").join("")+"</div>"+
-   '<label class="lbl">Start<input type="time" id="gA" class="tfull"></label><label class="lbl">End<input type="time" id="gZ" class="tfull"></label>'+
-   '<input type="text" id="gN" placeholder="Note (optional)" aria-label="Note"><button class="btn primary" id="gSave">Save</button></div>';
+  h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh">'+fmt(a)+" to "+fmt(z)+'</h2>'+
+   '<div class="kinds fill">'+Object.keys(FILL).map(k=>'<button class="btn ik" data-k="'+k+'">'+FILL[k]+"</button>").join("")+"</div>"+
+   '<div id="gRest" hidden><label class="lbl">Start<input type="time" id="gA" class="tfull"></label><label class="lbl">End<input type="time" id="gZ" class="tfull"></label>'+
+   '<input type="text" id="gN" placeholder="Note (optional)" aria-label="Note"><button class="btn primary" id="gSave">Save</button></div></div>';
   $("gA").value=toInput(a);$("gZ").value=toInput(z);
-  document.querySelectorAll(".ik").forEach(x=>x.onclick=()=>{t=x.dataset.k;document.querySelectorAll(".ik").forEach(y=>y.setAttribute("aria-pressed",y===x));$("gN").placeholder=t==="other"?"What did she do?":"Note (optional)";if(t==="other")$("gN").focus();});
-  const save=()=>{const nt=$("gN").value.trim();if(!t&&!nt){closeSheet();return;}
+  const pickK=k=>{if(k==="bottle"||k==="diaper"){closeSheet();sheetPersist=null;openEvSheet(k,null,{at:a});return;}
+    t=k;document.querySelectorAll(".ik").forEach(y=>y.setAttribute("aria-pressed",y.dataset.k===k));$("gRest").hidden=false;
+    $("gN").placeholder=k==="note"?"What did she do?":"Note (optional)";if(k==="note")$("gN").focus();};
+  document.querySelectorAll(".ik").forEach(x=>x.onclick=()=>pickK(x.dataset.k));
+  const save=()=>{if(!t){closeSheet();sheetPersist=null;return;}const nt=$("gN").value.trim();
     const at=near(fromInput($("gA").value)??a,a);let end=near(fromInput($("gZ").value)??z,at);if(end<at)end=at;
-    const e={id:newId(),t:t==="nap"?"nap":t==="play"?"play":"note",at,lay:2};if(e.t!=="note")e.end=end;if(nt)e.note=nt;else if(e.t==="note")e.note="Other";
-    events.push(e);saveEvents();closeSheet();render();renderLog();toast("Saved");};
+    const e={id:newId(),t,at,lay:2};if(t!=="note")e.end=end;if(nt)e.note=nt;else if(t==="note")e.note="Other";
+    events.push(e);saveEvents();closeSheet();sheetPersist=null;render();renderLog();toast("Saved");};
   $("gSave").onclick=save;$("sbg").onclick=save;sheetPersist=save;
+  if(pre)pickK(pre);
 }
 function openSheet(i,stage,r){
   const b=stage.blocks[i],logged=(log.starts||{})[i]!=null,sk=!!(log.skips||{})[i];
@@ -577,7 +584,7 @@ function openSheet(i,stage,r){
    (isToday?'<button class="btn" id="sNow">Start now</button>':"")+
    (hasEnd?'<label class="lbl">End<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">End now</button>':""):"")+
    (b.t==="bath"?'<button class="btn vd" id="sFake">Fake bath</button>':"")+
-   '<div class="kinds inst" id="sInst" hidden><p class="lbl">Instead she</p>'+Object.keys(INST).map(k=>'<button class="btn ik" data-k="'+k+'">'+INST[k]+"</button>").join("")+"</div>"+
+   '<div class="kinds fill" id="sInst" hidden>'+Object.keys(FILL).map(k=>'<button class="btn ik" data-k="'+k+'">'+FILL[k]+"</button>").join("")+"</div>"+
    '<input type="text" id="sNote" placeholder="Note (optional)" aria-label="Note">'+
    '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skip")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn" id="sClose">Done</button></div>';
   $("sh").textContent=b.label+" · "+fmt(r.s[i]);
@@ -623,8 +630,8 @@ function openSheet(i,stage,r){
   let skNow=sk,inst=iv0?iv0.t:null;
   const skUi=()=>{$("sSkip").textContent=skNow?"Undo skip":"Skip";$("sInst").hidden=!skNow;
     document.querySelectorAll(".ik").forEach(x=>x.setAttribute("aria-pressed",x.dataset.k===inst));
-    $("sNote").placeholder=skNow&&inst==="other"?"What did she do?":"Note (optional)";};
-  document.querySelectorAll(".ik").forEach(x=>x.onclick=()=>{inst=inst===x.dataset.k?null:x.dataset.k;skUi();extras();if(inst==="other")$("sNote").focus();});
+    $("sNote").placeholder="Note (optional)";};
+  document.querySelectorAll(".ik").forEach(x=>x.onclick=()=>{extras();closeSheet();sheetPersist=null;openGapSheet(r.s[i],r.s[i]+b.d,x.dataset.k);});
   skUi();$("sNote").addEventListener("change",extras);
   $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};skNow=!skNow;dirty=false;
     if(!skNow){delete log.skips[i];inst=null;}else{if(!endSet){pick=r.s[i];pickEnd=pick+b.d;ti.value=toInput(pick);showEnd();}log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}
@@ -679,7 +686,7 @@ function renderEdit(){
   $("eReset").onclick=()=>{draft=null;renderEdit();};
 }
 /* ---------- care log ---------- */
-const EV={bottle:{label:"Bottle",dot:"var(--feed-edge)",bg:"var(--feed)"},diaper:{label:"Diaper",dot:"var(--nap-edge)",bg:"var(--nap)"},nap:{label:"Nap",dot:"var(--night-edge)",bg:"var(--night)"},night:{label:"Night sleep",dot:"var(--wind-edge)",bg:"var(--wind)"},note:{label:"Note",dot:"var(--play-edge)",bg:"var(--play)"},play:{label:"Play",dot:"var(--play-edge)",bg:"var(--play)"}};
+const EV={bottle:{label:"Bottle",dot:"var(--feed-edge)",bg:"var(--feed)"},diaper:{label:"Diaper",dot:"var(--nap-edge)",bg:"var(--nap)"},nap:{label:"Nap",dot:"var(--night-edge)",bg:"var(--night)"},night:{label:"Night sleep",dot:"var(--wind-edge)",bg:"var(--wind)"},note:{label:"Note",dot:"var(--play-edge)",bg:"var(--play)"},play:{label:"Play",dot:"var(--play-edge)",bg:"var(--play)"},bath:{label:"Bath",dot:"var(--play-edge)",bg:"var(--play)"}};
 const QI={bottle:'<path d="M10 2h4v3l2 3v12a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8l2-3z"/><path d="M8 12h8"/>',
  diaper:'<path d="M3 7h18v3c0 6-4 9-9 9s-9-3-9-9z"/><path d="M8 7v3M16 7v3"/>',
  nap:'<path d="M5 9h6l-6 8h6M14 5h5l-5 6h5"/>',
@@ -718,7 +725,7 @@ function evTitle(e,stage){
 }
 function renderQuick(){
   const q=$("quick");if(q.childElementCount)return;
-  Object.keys(EV).filter(t=>t!=="play").forEach(t=>{const b=document.createElement("button");b.className="qb";
+  Object.keys(EV).filter(t=>t!=="play"&&t!=="bath").forEach(t=>{const b=document.createElement("button");b.className="qb";
     b.innerHTML='<span style="background:'+EV[t].bg+'"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+QI[t]+"</svg></span>"+EV[t].label;
     b.onclick=()=>openEvSheet(t,null);q.appendChild(b);});
 }
@@ -729,7 +736,7 @@ function renderLog(){
   if(!list.length){host.innerHTML='<p class="hint">Nothing logged for this day yet. Tap a button above to add the first entry.</p>';return;}
   list.forEach(e=>{
     const c=document.createElement("button");c.className="ev";c.style.setProperty("--dot",EV[e.t].dot);
-    const time=fmt(e.at)+(e.end!=null&&(e.t==="nap"||e.t==="night"||e.t==="play")?" to "+fmt(e.end):"");
+    const time=fmt(e.at)+(e.end!=null&&(e.t==="nap"||e.t==="night"||e.t==="play"||e.t==="bath")?" to "+fmt(e.end):"");
     c.innerHTML='<span class="dot" aria-hidden="true"></span><span class="evb"><span class="evt"></span><span class="evn"></span>'+(e.note&&e.t!=="note"?'<span class="evx"></span>':"")+"</span>";
     c.querySelector(".evt").textContent=time;c.querySelector(".evn").textContent=evTitle(e,stage);
     if(e.note&&e.t!=="note")c.querySelector(".evx").textContent=e.note;
@@ -773,12 +780,12 @@ function linkSchedule(t,at){
   if(best<0||bd>(t==="night"?180:90))return -1;
   log.starts=st;log.skips=sk;log.starts[best]=at;saveLog();return best;
 }
-function openEvSheet(t,e){
+function openEvSheet(t,e,pre){
   const isNew=!e,stage=stageFor(selDate),isToday=selDate===cycleToday();
-  const now=isToday?nowIn(stage):stage.wake+180;
+  const now=pre&&pre.at!=null?pre.at:isToday?nowIn(stage):stage.wake+180;
   const it=e?JSON.parse(JSON.stringify(e)):{id:newId(),t,at:now,lay:2};
   if(isNew&&t==="bottle")it.oz=lastOz();
-  const span=t==="nap"||t==="night"||t==="play";
+  const span=t==="nap"||t==="night"||t==="play"||t==="bath";
   let h='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>';
   h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt"></label>';
   if(span)h+='<label class="lbl">End<input type="time" id="evEnd"></label><button class="btn" id="evClr">Still going, clear the end</button>';
@@ -787,7 +794,7 @@ function openEvSheet(t,e){
   if(t==="diaper"&&isNew)h+='<p class="diaper-hint">Tap one to save it.</p>';
   if(t==="diaper")h+='<div class="kinds">'+Object.keys(DIAPER).map(k=>'<button class="btn kind" data-k="'+k+'" aria-pressed="'+(it.kind===k)+'">'+DIAPER[k]+"</button>").join("")+"</div>";
   h+='<input type="text" id="evNote" placeholder="'+(t==="note"?"What happened?":"Note (optional)")+'" aria-label="Note">';
-  if(isNew&&(t==="bottle"||span))h+='<label class="switch"><input type="checkbox" id="evLink" checked> Update the schedule to match</label>';
+  if(isNew&&(t==="bottle"||span))h+='<label class="switch"><input type="checkbox" id="evLink"'+(pre?"":" checked")+'> Update the schedule to match</label>';
   h+='<div class="btnrow"><button class="btn primary" id="evSave"'+(isNew&&t==="diaper"?" hidden":"")+'>Save</button>'+(isNew?"":'<button class="btn" id="evDel">Delete</button>')+'<button class="btn ghost" id="evCancel">Cancel</button></div></div>';
   $("sheetHost").innerHTML=h;
   $("sh").textContent=(isNew?"Log ":"Edit ")+EV[t].label.toLowerCase();
