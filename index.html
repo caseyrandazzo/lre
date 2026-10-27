@@ -459,6 +459,10 @@ function renderDays(){
     b.onclick=()=>{selDate=ds;wantScroll=true;loadDay();loadEvents();};host.appendChild(b);}
   });
 }
+const BUILD="b20261027-1830";
+// pick up a newly uploaded version on its own: check when the app comes back to the front
+async function checkUpdate(){try{const t=await (await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"})).text();const m=t.match(/const BUILD="([^"]+)"/);if(m&&m[1]!==BUILD&&!$("sheetHost").innerHTML)location.reload();}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate();});setInterval(checkUpdate,300000);
 let wantScroll=true,renderTok=0;
 // a block you started keeps its timer going until you stop it, even past its planned length
 function timed(b){return b.d>0&&b.t!=="grace"&&b.t!=="night";}
@@ -515,18 +519,21 @@ function render(){
   // right after a feed, open time is suggested as play then nap, like the rest of the day
   const addSugg=(a,z,t,label)=>{addLabel(a);const c=document.createElement("button");c.className="block b-sugg b-"+t;c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
     c.innerHTML='<div class="row"><span class="name">'+label+'</span><span class="range">'+dur(z-a)+'</span></div>';c.onclick=()=>openGapSheet(a,z,t);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
-  const addGap=(a,z)=>{if(lastKind==="feed"&&z-a>=45){addSugg(a,a+30,"play","Play");addSugg(a+30,z,"nap","Nap");lastKind=null;return;}
+  // time between a nap that ended early and what comes next is awake time; the next feed stays put
+  const addGap=(a,z,nextFeed)=>{if(lastKind==="feed"&&z-a>=45){addSugg(a,a+30,"play","Play");addSugg(a+30,z,"nap","Nap");lastKind=null;return;}
     if(lastKind==="play"&&z-a>=30){addSugg(a,z,"nap","Nap");lastKind=null;return;}addLabel(a);const c=document.createElement("button");c.className="block b-gap";c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
-    c.innerHTML='<div class="row"><span class="name">Open time</span><span class="range">'+dur(z-a)+'</span></div><span class="note">Tap to add what she did</span>';
+    const inGap=isToday&&now>=a&&now<z;
+    const rt=nextFeed?(inGap?"Feed in "+dur(z-now):"Until the "+fmt(z)+" feed"):dur(z-a);
+    c.innerHTML='<div class="row"><span class="name">Awake</span><span class="range">'+rt+'</span></div><span class="note">Tap to log what she did</span>';
     c.onclick=()=>openGapSheet(a,z);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
   const items=order(stage).map((i,k)=>({i,k,start:r.s[i]})).concat(loose.map((e,k)=>({e,k:1000+k,start:e.at})));
   items.sort((a,b)=>a.start-b.start||a.k-b.k);
   items.forEach(it=>{
-    if(it.e){if(prevEnd!=null&&it.e.at-prevEnd>=15)addGap(prevEnd,it.e.at);addLoose(it.e);return;}
+    if(it.e){if(prevEnd!=null&&it.e.at-prevEnd>=15)addGap(prevEnd,it.e.at,it.e.t==="bottle");addLoose(it.e);return;}
     const i=it.i,b=stage.blocks[i];
     const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
     if(sk&&!(log.notes||{})[i]&&!(log.instead||{})[i]&&covered(start,start+b.d))return;
-    if(prevEnd!=null&&start-prevEnd>=15)addGap(prevEnd,start);
+    if(prevEnd!=null&&start-prevEnd>=15)addGap(prevEnd,start,b.t==="feed");
     lastKind=sk?null:b.t;
     prevStart=start;prevEnd=Math.max(prevEnd==null?-1e9:prevEnd,sk?start+b.d:end);
     const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(start);tl.appendChild(lab);
@@ -623,7 +630,8 @@ function openSheet(i,stage,r){
   let cleared=false;
   const upd=()=>{if(!ti.value){cleared=true;return;}cleared=false;const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;if(!endSet){pickEnd=pick+len;showEnd();}}};
   ti.addEventListener("input",upd);ti.addEventListener("change",()=>{upd();persist();});
-  const updEnd=()=>{if(!ei)return;const m=fromInput(ei.value);if(m==null)return;let x=near(m,pick);if(x<pick)x+=1440;if(x!==pickEnd){pickEnd=x;endSet=true;endDirty=true;dirty=true;}};
+  let endCleared=false;
+  const updEnd=()=>{if(!ei)return;if(!ei.value){if((log.ends||{})[i]!=null)endCleared=true;return;}endCleared=false;const m=fromInput(ei.value);if(m==null)return;let x=near(m,pick);if(x<pick)x+=1440;if(x!==pickEnd){pickEnd=x;endSet=true;endDirty=true;dirty=true;}};
   if(ei){ei.addEventListener("input",updEnd);ei.addEventListener("change",()=>{updEnd();persist();});}
   if($("sEndNow"))$("sEndNow").onclick=e=>{let x=near(clock(),pick);if(x<pick)x=pick;pickEnd=x;endSet=true;endDirty=true;dirty=true;showEnd();persist();const bt=e.currentTarget;bt.classList.add("ok");bt.textContent="Stopped "+fmt(pickEnd)+" ✓";};
   if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";note();};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.25);dirty=true;so();persist();};$("ozp").onclick=()=>{oz+=0.25;dirty=true;so();persist();};}
@@ -646,13 +654,16 @@ function openSheet(i,stage,r){
   const clearIt=()=>{delete log.starts[i];if(log.run)delete log.run[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();render();renderLog();};
   // every change saves right away; Done, tapping outside, or leaving the app just closes
   let savedAny=false;
+  const dropEnd=()=>{if(log.ends)delete log.ends[i];const e=events.find(x=>x.blk===i);if(e&&e.end!=null){delete e.end;saveEvents();}};
   const persist=()=>{upd();updEnd();extras();
+    if(endCleared){dropEnd();endCleared=false;saveLog();render();renderLog();savedAny=true;}
     if(cleared){if((log.starts||{})[i]!=null){clearIt();savedAny=true;}return;}
     if(dirty&&!skNow){setStart(i,pick,oz,endDirty?pickEnd:undefined,vdDirty?vdOn:undefined,timed(b)&&!endDirty);dirty=false;savedAny=true;}};
   const finish=()=>{persist();closeSheet();sheetPersist=null;if(savedAny)toast(cleared?"Entry cleared":b.label+" saved");};
   sheetPersist=persist;
   if($("sLog"))$("sLog").onclick=()=>{upd();if(hasEnd){updEnd();if(pickEnd<=pick){pickEnd=pick+b.d;showEnd();}endDirty=true;}dirty=true;persist();closeSheet();sheetPersist=null;toast(b.label+" logged "+fmt(pick)+(hasEnd?" to "+fmt(pickEnd):""));};
-  if($("sNow"))$("sNow").onclick=()=>{extras();closeSheet();sheetPersist=null;save(near(clock(),r.base[i]));};
+  if($("sNow"))$("sNow").onclick=()=>{upd();const typed=dirty||(log.starts||{})[i]!=null;const at=typed?pick:near(clock(),r.base[i]);
+    extras();closeSheet();sheetPersist=null;dropEnd();endDirty=false;save(at);};
   // skipping keeps the sheet open so you can say what she did instead
   let skNow=sk,inst=iv0?iv0.t:null;
   const skUi=()=>{$("sSkip").textContent=skNow?"Undo skip":"Skip";$("sInst").hidden=!skNow;
@@ -819,7 +830,7 @@ function openEvSheet(t,e,pre){
   h+='<label class="lbl">'+(span?"Start":"Time")+'<input type="time" id="evAt"></label>';
   if(hasEnd)h+='<label class="lbl">End<input type="time" id="evEnd"></label><button class="btn" id="evClr">'+(span?"Still going, clear the end":"Clear the end")+'</button>';
   if(hasEnd&&isNew&&isToday)h+='<button class="btn" id="evTimer">Start timer</button>';
-  if(hasEnd&&!isNew&&it.end==null&&isToday)h+='<button class="btn primary" id="evStop">Stop timer</button>';
+  if(hasEnd&&!isNew&&isToday)h+=it.run&&it.end==null?'<button class="btn primary" id="evStop">Stop timer</button>':'<button class="btn" id="evTimer">Start timer</button>';
   if(t==="bottle")h+='<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div><button class="btn vd" id="vd">VD</button>';
   if(t==="diaper"&&isNew)h+='<p class="diaper-hint">Tap one to save it.</p>';
   if(t==="diaper")h+='<div class="kinds">'+Object.keys(DIAPER).map(k=>'<button class="btn kind" data-k="'+k+'" aria-pressed="'+(it.kind===k)+'">'+DIAPER[k]+"</button>").join("")+"</div>";
@@ -844,7 +855,7 @@ function openEvSheet(t,e,pre){
     if(t==="bottle"&&vdDirty)applyVd(it,vdOn);
     saveEvents();closeSheet();render();renderLog();toast(msg);
   };
-  if($("evTimer"))$("evTimer").onclick=()=>{it.at=nowIn(stage);delete it.end;it.run=true;it.note=$("evNote").value.trim();commit();};
+  if($("evTimer"))$("evTimer").onclick=()=>{const m=fromInput($("evAt").value);it.at=isNew&&m===fromInput(toInput(now))?nowIn(stage):(m!=null?m:it.at);delete it.end;it.run=true;it.note=$("evNote").value.trim();commit();};
   if($("evStop"))$("evStop").onclick=()=>{it.end=Math.max(it.at,nowIn(stage));delete it.run;it.note=$("evNote").value.trim();commit();};
   $("evSave").onclick=()=>{
     const m=fromInput($("evAt").value);if(m!=null)it.at=m;
