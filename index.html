@@ -348,6 +348,8 @@ function chain(stage,st,sk,durs,grace,endAt,en,rel){en=en||{};
     let e;
     if(bl[i].at!=null)e=bl[i].at;
     else if(i===0)e=stage.wake;
+    // the bedtime routine (bath, then bedtime feed) keeps its clock time
+    else if(rel&&((bl[i].t==="feed"&&bl[i+1]&&bl[i+1].t==="night")||(bl[i].t==="bath"&&bl[i+1]&&bl[i+1].t==="feed"&&bl[i+2]&&bl[i+2].t==="night")))e=rel[i];
     else if(rel&&bl[i].t==="feed"&&(()=>{for(let j=i-1;j>=0;j--)if(bl[j].t==="feed")return (e=base[j]+(rel[i]-rel[j]),true);return false;})()){}
     else if(en[i-1]!=null&&!sk[i-1])e=en[i-1];
     else e=bl[i-1].d===0&&!sk[i-1]&&st[i]==null?base[i-1]:base[i-1]+durs[i-1];
@@ -402,10 +404,10 @@ async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main"
 let saving=Promise.resolve();
 let lastLog=null;
 function saveLog(){const ds=selDate,body=JSON.parse(JSON.stringify(log));LS.set("day:"+ds,body);
-  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{},notes:{},fake:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
-    ["starts","skips","ends","notes","fake"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
+  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{},notes:{},fake:{},instead:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
+    ["starts","skips","ends","notes","fake","instead"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
     // An empty map in a merge write replaces the stored map, which wiped the whole day. Send only what changed.
-    ["starts","skips","ends","notes","fake"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
+    ["starts","skips","ends","notes","fake","instead"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
     lastLog=body;if(!Object.keys(patch).length)return;
     saving=saving.then(()=>db.doc("days/"+ds).set(patch,{merge:true})).catch(()=>toast("Couldn't save that entry. Check your connection."));}}
 // Every log entry linked to a schedule block marks that block as started. Restores starts lost to the old save bug.
@@ -488,7 +490,9 @@ function render(){
     if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
     if(sk)chips.push('<span class="chip">Skipped</span>');
     // length only; the clock times are already on the left. A live block counts up instead.
-    const un=((log.notes||{})[i])||"";
+    const iv=sk?(log.instead||{})[i]:null,nt=((log.notes||{})[i])||"";
+    const ivt=iv&&iv.t!=="other"?(iv.t==="nap"?"Napped ":"Played ")+fmt(iv.at)+" to "+fmt(iv.end)+" · "+dur(iv.end-iv.at):"";
+    const un=[ivt,nt].filter(Boolean).join(" · ");
     const actual=end-start,ended=(log.ends||{})[i]!=null;
     let rng=actual>0?dur(actual):"";
     if(ended&&b.d>0&&actual!==b.d)rng=dur(actual)+" · planned "+dur(b.d);
@@ -504,6 +508,7 @@ function render(){
 
 /* ---------- logging sheet ---------- */
 function closeSheet(){$("sheetHost").innerHTML="";}
+const INST={nap:"Napped",play:"Played",other:"Other"};
 function openSheet(i,stage,r){
   const b=stage.blocks[i],logged=(log.starts||{})[i]!=null,sk=!!(log.skips||{})[i];
   const isToday=selDate===cycleToday(),bottle=isBottle(b),linked=events.find(x=>x.blk===i);
@@ -512,8 +517,10 @@ function openSheet(i,stage,r){
   const due=isToday?r.base[i]<=nowIn(stage):selDate<cycleToday();
   let dirty=false;
   // end defaults to the expected end and follows the start until someone edits it
-  const hasEnd=b.d>0&&b.t!=="grace",len=Math.max(0,r.ends[i]-r.s[i]);
+  const hasEnd=b.d>0&&b.t!=="grace",len=sk?b.d:Math.max(0,r.ends[i]-r.s[i]);
+  const iv0=((log.instead||{})[i])||null;
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
+  if(sk&&iv0&&iv0.at!=null){pick=iv0.at;pickEnd=iv0.end!=null?iv0.end:pick+len;}
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
    (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div><button class="btn vd" id="vd">VD</button>':"")+
@@ -521,6 +528,7 @@ function openSheet(i,stage,r){
    (isToday?'<button class="btn" id="sNow">Start now</button>':"")+
    (hasEnd?'<label class="lbl">End<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">End now</button>':""):"")+
    (b.t==="bath"?'<button class="btn vd" id="sFake">Fake bath</button>':"")+
+   '<div class="kinds inst" id="sInst" hidden><p class="lbl">Instead she</p>'+Object.keys(INST).map(k=>'<button class="btn ik" data-k="'+k+'">'+INST[k]+"</button>").join("")+"</div>"+
    '<input type="text" id="sNote" placeholder="Note (optional)" aria-label="Note">'+
    '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skip")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn primary" id="sClose">Close</button></div>';
   $("sh").textContent=b.label+" · "+fmt(r.s[i]);
@@ -529,7 +537,8 @@ function openSheet(i,stage,r){
   let fake=!!(log.fake||{})[i];const fk=$("sFake");if(fk){const sf=()=>fk.setAttribute("aria-pressed",fake);sf();fk.onclick=()=>{fake=!fake;sf();};}
   const note=()=>{};
   const ei=$("sEnd");const showEnd=()=>{if(ei)ei.value=toInput(pickEnd);};showEnd();
-  const upd=()=>{const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;if(!endSet){pickEnd=pick+len;showEnd();}}};
+  let cleared=false;
+  const upd=()=>{if(!ti.value){cleared=true;return;}cleared=false;const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;if(!endSet){pickEnd=pick+len;showEnd();}}};
   ti.addEventListener("input",upd);ti.addEventListener("change",upd);
   const updEnd=()=>{if(!ei)return;const m=fromInput(ei.value);if(m==null)return;let x=near(m,pick);if(x<pick)x+=1440;if(x!==pickEnd){pickEnd=x;endSet=true;endDirty=true;dirty=true;}};
   if(ei){ei.addEventListener("input",updEnd);ei.addEventListener("change",updEnd);}
@@ -543,14 +552,27 @@ function openSheet(i,stage,r){
   const extras=()=>{const nt=$("sNote").value.trim();let ch=false;log.notes=log.notes||{};log.fake=log.fake||{};
     if(nt!==note0){if(nt)log.notes[i]=nt;else delete log.notes[i];const e=events.find(x=>x.blk===i);if(e){if(nt)e.note=nt;else delete e.note;saveEvents();}ch=true;}
     if(fk&&fake!==!!log.fake[i]){if(fake)log.fake[i]=true;else delete log.fake[i];ch=true;}
+    // what she did instead of a skipped block; a nap goes in the log so it counts toward nap time
+    log.instead=log.instead||{};const prev=JSON.stringify(log.instead[i]||null);
+    if(skNow&&inst)log.instead[i]={t:inst,at:pick,end:pickEnd};else delete log.instead[i];
+    if(JSON.stringify(log.instead[i]||null)!==prev)ch=true;
+    const ie=events.find(x=>x.inst===i);
+    if(skNow&&inst==="nap"){const e=ie||{id:newId(),t:"nap",inst:i,lay:2};e.at=pick;e.end=pickEnd;const nt=$("sNote").value.trim();if(nt)e.note=nt;else delete e.note;if(!ie)events.push(e);saveEvents();ch=true;}
+    else if(ie){events=events.filter(x=>x!==ie);saveEvents();ch=true;}
     if(ch){saveLog();render();renderLog();}};
-  const finish=()=>{upd();updEnd();extras();closeSheet();if(dirty)save(pick);};
+  const clearIt=()=>{delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();render();renderLog();};
+  const finish=()=>{upd();updEnd();extras();closeSheet();if(cleared){if(logged){clearIt();toast("Entry cleared");}return;}if(dirty&&!skNow)save(pick);};
   if($("sNow"))$("sNow").onclick=()=>{extras();closeSheet();save(near(clock(),r.base[i]));};
   // skipping keeps the sheet open so you can say what she did instead
-  let skNow=sk;const skUi=()=>{$("sSkip").textContent=skNow?"Undo skip":"Skip";$("sNote").placeholder=skNow?"What did she do instead?":"Note (optional)";};skUi();
+  let skNow=sk,inst=iv0?iv0.t:null;
+  const skUi=()=>{$("sSkip").textContent=skNow?"Undo skip":"Skip";$("sInst").hidden=!skNow;
+    document.querySelectorAll(".ik").forEach(x=>x.setAttribute("aria-pressed",x.dataset.k===inst));
+    $("sNote").placeholder=skNow&&inst==="other"?"What did she do?":"Note (optional)";};
+  document.querySelectorAll(".ik").forEach(x=>x.onclick=()=>{inst=inst===x.dataset.k?null:x.dataset.k;skUi();if(inst==="other")$("sNote").focus();});
+  skUi();
   $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};skNow=!skNow;dirty=false;
-    if(!skNow)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}
-    saveLog();render();renderLog();skUi();if(skNow)$("sNote").focus();};
+    if(!skNow){delete log.skips[i];inst=null;}else{if(!endSet){pick=r.s[i];pickEnd=pick+b.d;ti.value=toInput(pick);showEnd();}log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}
+    saveLog();render();renderLog();skUi();};
   if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();closeSheet();render();renderLog();toast("Entry cleared");};
   $("sClose").onclick=finish;$("sbg").onclick=finish;
 }
