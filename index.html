@@ -450,6 +450,14 @@ function renderDays(){
   });
 }
 let wantScroll=true;
+function placeNow(tl,spans,now){
+  if(!spans.length)return;
+  let y=null;const inn=spans.find(x=>now>=x.start&&now<x.end);
+  if(inn){const f=(now-inn.start)/Math.max(1,inn.end-inn.start);y=inn.card.offsetTop+f*inn.card.offsetHeight;}
+  else{const nx=spans.find(x=>x.start>now);y=nx?nx.card.offsetTop-4:(spans[spans.length-1].card.offsetTop+spans[spans.length-1].card.offsetHeight+4);}
+  const nl=document.createElement("div");nl.className="nowline";nl.style.top=y+"px";nl.innerHTML="<span>"+fmt(now)+"</span>";tl.appendChild(nl);
+  if(wantScroll&&!$("dayView").hidden){wantScroll=false;nl.scrollIntoView({block:"center"});}
+}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&!$("dayView").hidden&&!$("sheetHost").innerHTML){selDate=cycleToday();wantScroll=true;loadDay();loadEvents();}});
 function render(){
   if(!selDate)return;
@@ -472,7 +480,7 @@ function render(){
   let ni=-1;if(isToday)order(stage).forEach(i=>{const b=stage.blocks[i];if(ni<0&&b.t!=="grace"&&(log.starts||{})[i]==null&&!(log.skips||{})[i]&&r.ends[i]>now)ni=i;});
   $("nextCard").hidden=ni<0;
   if(ni>=0){const b=stage.blocks[ni];$("nextKind").textContent=(r.base[ni]<=now?"Now":"Up next")+" · "+fmt(r.s[ni]);$("nextName").textContent=b.label;$("nextCard").onclick=()=>openSheet(ni,stage,r);}
-  let nowPlaced=false;
+  const spans=[];
   order(stage).forEach(i=>{const b=stage.blocks[i];
     const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
     const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(start);tl.appendChild(lab);
@@ -500,10 +508,9 @@ function render(){
     card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(un?'<span class="note un"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
     card.querySelector(".name").textContent=b.label;if(un)card.querySelector(".un").textContent=un;if(b.note)card.querySelector(".note").textContent=b.note;
     card.onclick=()=>openSheet(i,stage,r);
-    tl.appendChild(card);tick();
-    if(live&&wantScroll){wantScroll=false;requestAnimationFrame(()=>{if(card.isConnected&&!$("dayView").hidden)card.scrollIntoView({block:"center"});});}
-    if(live&&!nowPlaced){nowPlaced=true;requestAnimationFrame(()=>{if(!card.isConnected)return;const f=Math.min(1,(now-r.base[i])/Math.max(1,end-r.base[i]));const y=card.offsetTop+f*card.offsetHeight;const nl=document.createElement("div");nl.className="nowline";nl.style.top=y+"px";nl.innerHTML="<span>"+fmt(now)+"</span>";tl.appendChild(nl);});}
+    tl.appendChild(card);tick();spans.push({card,start,end:sk?start+b.d:end});
   });
+  if(isToday)requestAnimationFrame(()=>{if(tl.isConnected)placeNow(tl,spans,now);});
 }
 
 /* ---------- logging sheet ---------- */
