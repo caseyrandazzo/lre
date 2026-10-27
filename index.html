@@ -92,7 +92,7 @@ details.tips ul{margin:8px 0 2px;padding-left:18px;display:flex;flex-direction:c
 .chip{font-size:.72rem;font-weight:600;border-radius:999px;padding:2px 8px;background:var(--surface);color:var(--muted);font-variant-numeric:tabular-nums}
 .b-special .chip{background:var(--bg)}
 .chip.late{color:var(--shift)} .chip.done{color:var(--ok)} .chip.live{background:var(--fg);color:var(--bg)}
-.block.past{opacity:.62} .block.skipped{opacity:.4} .block.skipped .name{text-decoration:line-through}
+.block.past{opacity:.62} .block.skipped .name,.block.skipped .range,.block.skipped .note:not(.un),.block.skipped .chip{opacity:.4} .block.skipped .name{text-decoration:line-through} .block.skipped .note.un{color:var(--fg);font-size:.9rem}
 .nowline{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--fg);z-index:2;pointer-events:none}
 .nowline span{position:absolute;left:0;top:-11px;background:var(--fg);color:var(--bg);font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 7px;font-variant-numeric:tabular-nums}
 .sheet-bg{position:fixed;inset:0;background:rgba(20,22,26,.35);z-index:20}
@@ -374,8 +374,11 @@ function compute(stage,lg,hold,grace){
 function computePart(stage,st,sk,hold,grace,endAt,en){
   const bl=stage.blocks,n=bl.length;
   const plan=chain(stage,{},{},bl.map(b=>b.d),0,endAt).base;
-  const durs=bl.map((b,i)=>sk[i]?0:b.d);
-  let c=chain(stage,st,sk,durs,grace,endAt,en);
+  // a block that gets cut off by an earlier-logged next block ends where that one starts
+  const clip=c=>{for(let i=0;i<n-1;i++)if(!sk[i]&&!(en&&en[i]!=null)&&c.ends[i]>c.base[i+1])c.ends[i]=Math.max(c.base[i],c.base[i+1]);return c;};
+  // a skipped nap is still awake time, so it keeps its length and nothing after it moves up
+  const durs=bl.map(b=>b.d);
+  let c=clip(chain(stage,st,sk,durs,grace,endAt,en));
   let lastLogged=-1;for(let i=0;i<n;i++)if(st[i]!=null||sk[i]||(en&&en[i]!=null))lastLogged=i;
   const trimmed={};
   const bi=bl.findIndex(b=>b.t==="night");
@@ -384,7 +387,7 @@ function computePart(stage,st,sk,hold,grace,endAt,en){
     const adj=[];for(let j=bi-1;j>lastLogged;j--)if(bl[j].t==="nap"&&!sk[j]&&bl[j].d>0)adj.push(j);
     if(delta>0){for(const j of adj){if(delta<=0)break;const cut=Math.min(delta,Math.max(0,durs[j]-30));if(cut>0){durs[j]-=cut;delta-=cut;trimmed[j]=-cut;}}}
     else if(delta<0&&adj.length){const j=adj[0];const add=Math.min(-delta,30);durs[j]+=add;trimmed[j]=add;}
-    c=chain(stage,st,sk,durs,grace,endAt,en);
+    c=clip(chain(stage,st,sk,durs,grace,endAt,en));
   }
   return {plan,s:c.disp,base:c.base,ends:c.ends,durs,trimmed,lastLogged,bi};
 }
@@ -397,10 +400,10 @@ async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main"
 let saving=Promise.resolve();
 let lastLog=null;
 function saveLog(){const ds=selDate,body=JSON.parse(JSON.stringify(log));LS.set("day:"+ds,body);
-  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
-    ["starts","skips","ends"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
+  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{},notes:{},fake:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
+    ["starts","skips","ends","notes","fake"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
     // An empty map in a merge write replaces the stored map, which wiped the whole day. Send only what changed.
-    ["starts","skips","ends"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
+    ["starts","skips","ends","notes","fake"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
     lastLog=body;if(!Object.keys(patch).length)return;
     saving=saving.then(()=>db.doc("days/"+ds).set(patch,{merge:true})).catch(()=>toast("Couldn't save that entry. Check your connection."));}}
 // Every log entry linked to a schedule block marks that block as started. Restores starts lost to the old save bug.
@@ -476,18 +479,20 @@ function render(){
     const past=isToday&&now>=end&&!live;
     if(sk)card.classList.add("skipped");else if(past&&!logged)card.classList.add("past");
     const chips=[];
+    if((log.fake||{})[i])chips.push('<span class="chip">Fake bath</span>');
     if(events.some(x=>x.blk===i&&x.vd))chips.push('<span class="chip">VD</span>');
     if(logged){if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
     const sh=r.s[i]-r.plan[i];if(sh!==0&&!sk)chips.push('<span class="chip late">'+dur(sh)+(sh>0?" late":" early")+"</span>");
     if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
     if(sk)chips.push('<span class="chip">Skipped</span>');
     // length only; the clock times are already on the left. A live block counts up instead.
+    const un=((log.notes||{})[i])||"";
     const actual=end-start,ended=(log.ends||{})[i]!=null;
     let rng=actual>0?dur(actual):"";
     if(ended&&b.d>0&&actual!==b.d)rng=dur(actual)+" · planned "+dur(b.d);
     if(live){const d0=pdate(selDate);d0.setMinutes(start);rng='<span class="timer" data-since="'+d0.getTime()+'"></span>'+(actual>0?" of "+dur(actual):"");}
-    card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
-    card.querySelector(".name").textContent=b.label;if(b.note)card.querySelector(".note").textContent=b.note;
+    card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(un?'<span class="note un"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
+    card.querySelector(".name").textContent=b.label;if(un)card.querySelector(".un").textContent=un;if(b.note)card.querySelector(".note").textContent=b.note;
     card.onclick=()=>openSheet(i,stage,r);
     tl.appendChild(card);tick();
     if(live&&wantScroll){wantScroll=false;requestAnimationFrame(()=>{if(card.isConnected&&!$("dayView").hidden)card.scrollIntoView({block:"center"});});}
@@ -503,20 +508,23 @@ function openSheet(i,stage,r){
   let pick=r.s[i],oz=linked&&linked.oz!=null?+linked.oz:lastOz();
   // a block whose time has already come gets logged when the sheet closes; a future one only if something was changed
   const due=isToday?r.base[i]<=nowIn(stage):selDate<cycleToday();
-  let dirty=!logged&&!sk&&due&&b.t!=="grace";
+  let dirty=false;
   // end defaults to the expected end and follows the start until someone edits it
   const hasEnd=b.d>0&&b.t!=="grace",len=Math.max(0,r.ends[i]-r.s[i]);
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
    (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div><button class="btn vd" id="vd">VD</button>':"")+
-   '<label class="lbl">Started at<input type="time" id="sTime" class="tfull"></label>'+
-   (isToday?'<button class="btn" id="sNow">Started now</button>':"")+
-   (hasEnd?'<label class="lbl">Ended at<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">Ended now</button>':""):"")+
-   
-   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skipped this")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn primary" id="sClose">Close</button></div>';
-  $("sh").textContent=b.label+(logged?" · started "+fmt(r.s[i]):" · "+fmt(r.s[i]));
+   '<label class="lbl">Start<input type="time" id="sTime" class="tfull"></label>'+
+   (isToday?'<button class="btn" id="sNow">Start now</button>':"")+
+   (hasEnd?'<label class="lbl">End<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">End now</button>':""):"")+
+   (b.t==="bath"?'<button class="btn vd" id="sFake">Fake bath</button>':"")+
+   '<input type="text" id="sNote" placeholder="Note (optional)" aria-label="Note">'+
+   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skip")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn primary" id="sClose">Close</button></div>';
+  $("sh").textContent=b.label+" · "+fmt(r.s[i]);
   const ti=$("sTime");ti.value=toInput(pick);
+  const note0=((log.notes||{})[i])||(linked&&linked.note)||"";$("sNote").value=note0;
+  let fake=!!(log.fake||{})[i];const fk=$("sFake");if(fk){const sf=()=>fk.setAttribute("aria-pressed",fake);sf();fk.onclick=()=>{fake=!fake;sf();};}
   const note=()=>{};
   const ei=$("sEnd");const showEnd=()=>{if(ei)ei.value=toInput(pickEnd);};showEnd();
   const upd=()=>{const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;if(!endSet){pickEnd=pick+len;showEnd();}}};
@@ -529,9 +537,18 @@ function openSheet(i,stage,r){
   let vdOn=!!vdOwner(),vdDirty=false;
   if($("vd")){const sv=()=>$("vd").setAttribute("aria-pressed",vdOn);sv();$("vd").onclick=()=>{vdOn=!vdOn;vdDirty=true;dirty=true;sv();};}
   const save=at=>{const k=setStart(i,at,oz,endDirty?pickEnd:undefined,vdDirty?vdOn:undefined);toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
-  const finish=()=>{upd();updEnd();closeSheet();if(dirty)save(pick);};
-  if($("sNow"))$("sNow").onclick=()=>{closeSheet();save(near(clock(),r.base[i]));};
-  $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};if(sk)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}saveLog();closeSheet();render();renderLog();};
+  // a note or fake-bath mark saves on its own and doesn't count as logging the block
+  const extras=()=>{const nt=$("sNote").value.trim();let ch=false;log.notes=log.notes||{};log.fake=log.fake||{};
+    if(nt!==note0){if(nt)log.notes[i]=nt;else delete log.notes[i];const e=events.find(x=>x.blk===i);if(e){if(nt)e.note=nt;else delete e.note;saveEvents();}ch=true;}
+    if(fk&&fake!==!!log.fake[i]){if(fake)log.fake[i]=true;else delete log.fake[i];ch=true;}
+    if(ch){saveLog();render();renderLog();}};
+  const finish=()=>{upd();updEnd();extras();closeSheet();if(dirty)save(pick);};
+  if($("sNow"))$("sNow").onclick=()=>{extras();closeSheet();save(near(clock(),r.base[i]));};
+  // skipping keeps the sheet open so you can say what she did instead
+  let skNow=sk;const skUi=()=>{$("sSkip").textContent=skNow?"Undo skip":"Skip";$("sNote").placeholder=skNow?"What did she do instead?":"Note (optional)";};skUi();
+  $("sSkip").onclick=()=>{log.skips=log.skips||{};log.starts=log.starts||{};skNow=!skNow;dirty=false;
+    if(!skNow)delete log.skips[i];else{log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}
+    saveLog();render();renderLog();skUi();if(skNow)$("sNote").focus();};
   if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();closeSheet();render();renderLog();toast("Entry cleared");};
   $("sClose").onclick=finish;$("sbg").onclick=finish;
 }
