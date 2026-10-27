@@ -221,7 +221,7 @@ const DB={
   collection:p=>{const mk=cs=>({where:(f,op,v)=>mk([...cs,where(f,op,v)]),onSnapshot:(n,e)=>onSnapshot(query(collection(fsdb,p),...cs),x=>n({docs:x.docs.map(wrap),metadata:x.metadata}),onErr(e))});return mk([]);}
 };
 (function(){
-const VERSION=7;
+const VERSION=8;
 const TYPES={feed:"Feed",play:"Play",nap:"Nap",bath:"Bath",wind:"Wind-down",night:"Bedtime",special:"Early wake",grace:"Grace period"};
 const EARLY="Woke 30+ min before the start-of-day feed: pause 2 to 3 times, feed, then back down until the scheduled feed. Woke within 30 min: pause, then feed and count that as the start-of-day feed.";
 const GENERAL_TIPS=["Grace period: starting a block up to 15 minutes early or late doesn't change the rest of the day. Each feed is a reset point.",
@@ -307,6 +307,12 @@ const DEFAULTS={version:VERSION,birth:"2026-10-03",hold:false,grace:0,stages:[
    B("special","Night",180,"Time to move off round-the-clock feeding. The goal is sleeping 10 to 12 hours in a row.",1620)]}
 ]};
 
+function tidy(c){(c.stages||[]).forEach(st=>{st.tips=st.tips||[];
+  (st.blocks||[]).forEach(b=>{if(b.t==="special"&&b.note&&b.note!==EARLY&&!st.tips.includes(b.note))st.tips.push(b.note);});
+  st.blocks=(st.blocks||[]).filter(b=>b.t!=="special");
+  const f=st.blocks[0];if(f&&f.t==="feed"&&/start-of-day/i.test(f.label)&&f.d>30&&!(st.blocks[1]&&st.blocks[1].split)){st.blocks.splice(1,0,{t:"play",label:"Play",d:f.d-30,note:"",split:true});f.d=30;}
+});return c;}
+tidy(DEFAULTS);
 let cfg=JSON.parse(JSON.stringify(DEFAULTS));
 let log={starts:{},skips:{},ends:{}};
 let selDate=null;
@@ -386,12 +392,12 @@ function computePart(stage,st,sk,hold,grace,endAt,en){
 /* ---------- storage: shared db when available, this browser otherwise ---------- */
 let db=null,unDay=null;
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
-function adopt(d){if(!d||!d.stages)return;d.stages.forEach(st=>(st.blocks||[]).forEach(b=>{if(/^(Second-to-last feed|Aim for 9:00)/i.test(b.note||""))b.note="";}));if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=JSON.parse(JSON.stringify(d));if(cfg.grace==null)cfg.grace=0;}
+function adopt(d){if(!d||!d.stages)return;d.stages.forEach(st=>(st.blocks||[]).forEach(b=>{if(/^(Second-to-last feed|Aim for 9:00)/i.test(b.note||""))b.note="";}));if((d.version||1)<VERSION&&!d.customized){cfg.birth=d.birth||cfg.birth;cfg.hold=!!d.hold;if(d.grace!=null)cfg.grace=d.grace;return;}cfg=tidy(JSON.parse(JSON.stringify(d)));if(cfg.grace==null)cfg.grace=0;}
 async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main").set(JSON.parse(JSON.stringify(cfg)));}catch(e){toast("Couldn't save the schedule. Try again in a moment.");}}}
 let saving=Promise.resolve();
 let lastLog=null;
 function saveLog(){const ds=selDate,body=JSON.parse(JSON.stringify(log));LS.set("day:"+ds,body);
-  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{}};
+  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
     ["starts","skips","ends"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
     // An empty map in a merge write replaces the stored map, which wiped the whole day. Send only what changed.
     ["starts","skips","ends"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
@@ -405,10 +411,15 @@ function healStarts(){
   events.forEach(e=>{if(e.blk!=null&&log.starts[e.blk]==null&&!log.skips[e.blk]){log.starts[e.blk]=e.at;fix=true;}});
   if(fix){saveLog();render();}
 }
+// days saved before the start-of-day feed was split: every block after it moved down one slot
+const isSplit=ds=>{const b=stageFor(ds).blocks[1];return !!(b&&b.split);};
+function relayDay(ds,lg){if(lg.lay)return false;lg.lay=2;if(!isSplit(ds))return false;let ch=false;
+  ["starts","skips","ends"].forEach(k=>{const o=lg[k]||{},n={};Object.keys(o).forEach(key=>{const i=+key;if(i>=1){n[i+1]=o[key];ch=true;}else n[key]=o[key];});lg[k]=n;});return ch;}
+function relayEv(ds,list){let ch=false;const sp=isSplit(ds);list.forEach(e=>{if(e.lay)return;e.lay=2;ch=true;if(sp&&e.blk!=null&&e.blk>=1)e.blk++;});return ch;}
 function loadDay(){
   if(unDay){unDay();unDay=null;}
-  lastLog=null;log=LS.get("day:"+selDate)||{starts:{},skips:{}};render();
-  if(db){unDay=db.doc("days/"+selDate).onSnapshot(snap=>{if(snap.metadata.hasPendingWrites)return;const d=snap.exists?snap.data():null;log=d?JSON.parse(JSON.stringify(d)):{starts:{},skips:{}};log.starts=log.starts||{};log.skips=log.skips||{};log.ends=log.ends||{};lastLog=JSON.parse(JSON.stringify(log));render();if(!snap.metadata.fromCache)healStarts();},()=>{});}
+  lastLog=null;log=LS.get("day:"+selDate)||{starts:{},skips:{}};relayDay(selDate,log);render();
+  if(db){unDay=db.doc("days/"+selDate).onSnapshot(snap=>{if(snap.metadata.hasPendingWrites)return;const d=snap.exists?snap.data():null;log=d?JSON.parse(JSON.stringify(d)):{starts:{},skips:{}};log.starts=log.starts||{};log.skips=log.skips||{};log.ends=log.ends||{};lastLog=JSON.parse(JSON.stringify(log));if(d&&relayDay(selDate,log)&&!snap.metadata.fromCache)saveLog();else if(!d)log.lay=2;render();if(!snap.metadata.fromCache)healStarts();},()=>{});}
 }
 async function boot(){
   adopt(LS.get("cfg"));
@@ -467,7 +478,7 @@ function render(){
     const chips=[];
     if(events.some(x=>x.blk===i&&x.vd))chips.push('<span class="chip">VD</span>');
     if(logged){if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
-    const sh=r.s[i]-r.plan[i];if(sh!==0&&!sk)chips.push('<span class="chip late">'+(sh>0?"+":"−")+dur(sh)+"</span>");
+    const sh=r.s[i]-r.plan[i];if(sh!==0&&!sk)chips.push('<span class="chip late">'+dur(sh)+(sh>0?" late":" early")+"</span>");
     if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
     if(sk)chips.push('<span class="chip">Skipped</span>');
     // length only; the clock times are already on the left. A live block counts up instead.
@@ -583,10 +594,10 @@ function cacheEv(){LS.set("ev:"+selDate,{date:selDate,items:events});trendDocs[s
 let evKnown={},evLoaded=false;
 function loadEvents(){
   if(unEv){unEv();unEv=null;}
-  const ds=selDate;evLoaded=false;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});renderLog();
+  const ds=selDate;evLoaded=false;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});relayEv(ds,events);renderLog();
   if(db){unEv=db.collection("events").where("date","==",ds).onSnapshot(x=>{if(x.metadata.hasPendingWrites)return;const k={};
     events=x.docs.map(d=>{const v=JSON.parse(JSON.stringify(d.data()));delete v.date;k[v.id]=JSON.stringify(v);return v;});
-    evKnown=k;cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();if(!x.metadata.fromCache){evLoaded=true;healStarts();}},()=>{});}
+    evKnown=k;const moved=relayEv(ds,events);if(moved&&!x.metadata.fromCache)saveEvents();cacheEv();renderLog();if(!$("trendsView").hidden)renderTrends();if(!x.metadata.fromCache){evLoaded=true;healStarts();}},()=>{});}
 }
 // one Firestore document per entry: write only what changed, so two phones never overwrite each other
 function saveEvents(){cacheEv();if(!db)return;const ds=selDate,cur={};
@@ -650,7 +661,7 @@ function setStart(i,at,oz,end,vd){
   log.starts=log.starts||{};log.skips=log.skips||{};log.ends=log.ends||{};log.starts[i]=at;delete log.skips[i];
   if(end!=null)log.ends[i]=end;else if(log.ends[i]!=null&&log.ends[i]<=at)delete log.ends[i];saveLog();
   closeOpenNaps(at);
-  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i};events.push(e);}e.at=at;if(end!=null&&(k==="nap"||k==="night"))e.end=end;else if(e.end!=null&&e.end<=at)delete e.end;if(k==="bottle"){e.oz=oz;if(vd!=null)applyVd(e,vd);}}
+  if(k){let e=events.find(x=>x.blk===i);if(!e){e={id:newId(),t:k,at,blk:i,lay:2};events.push(e);}e.at=at;if(end!=null&&(k==="nap"||k==="night"))e.end=end;else if(e.end!=null&&e.end<=at)delete e.end;if(k==="bottle"){e.oz=oz;if(vd!=null)applyVd(e,vd);}}
   if(i===0){const pd=prevDs(selDate);(trendDocs[pd]||[]).forEach(x=>{if(x.t==="night"&&x.end==null){x.end=at+1440;patchDay(pd,x);}});}
   saveEvents();render();renderLog();
   return k;
@@ -668,7 +679,7 @@ function linkSchedule(t,at){
 function openEvSheet(t,e){
   const isNew=!e,stage=stageFor(selDate),isToday=selDate===cycleToday();
   const now=isToday?nowIn(stage):stage.wake+180;
-  const it=e?JSON.parse(JSON.stringify(e)):{id:newId(),t,at:now};
+  const it=e?JSON.parse(JSON.stringify(e)):{id:newId(),t,at:now,lay:2};
   if(isNew&&t==="bottle")it.oz=lastOz();
   const span=t==="nap"||t==="night";
   let h='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>';
