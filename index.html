@@ -576,6 +576,8 @@ function openSheet(i,stage,r){
   const iv0=((log.instead||{})[i])||null;
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
   if(sk&&iv0&&iv0.at!=null){pick=iv0.at;pickEnd=iv0.end!=null?iv0.end:pick+len;}
+  // a block you started and haven't ended: Done ends it now
+  const runNow=isToday&&logged&&!sk&&(log.ends||{})[i]==null&&hasEnd&&nowIn(stage)>=r.s[i]&&nowIn(stage)<r.ends[i];
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
    (!logged&&!sk&&b.t!=="grace"?'<button class="btn primary" id="sLog">Log '+b.label.toLowerCase()+'</button>':"")+
@@ -586,7 +588,7 @@ function openSheet(i,stage,r){
    (b.t==="bath"?'<button class="btn vd" id="sFake">Fake bath</button>':"")+
    '<div class="kinds fill" id="sInst" hidden>'+Object.keys(FILL).map(k=>'<button class="btn ik" data-k="'+k+'">'+FILL[k]+"</button>").join("")+"</div>"+
    '<input type="text" id="sNote" placeholder="Note (optional)" aria-label="Note">'+
-   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skip")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn" id="sClose">Done</button></div>';
+   '<div class="btnrow"><button class="btn" id="sSkip">'+(sk?"Undo skip":"Skip")+"</button>"+(logged?'<button class="btn" id="sClear">Clear entry</button>':"")+'</div><button class="btn'+(runNow?" primary":"")+'" id="sClose">'+(runNow?"Done":"Close")+'</button></div>';
   $("sh").textContent=b.label+" · "+fmt(r.s[i]);
   const ti=$("sTime");ti.value=toInput(pick);
   let note0=((log.notes||{})[i])||(linked&&linked.note)||"";$("sNote").value=note0;
@@ -637,7 +639,7 @@ function openSheet(i,stage,r){
     if(!skNow){delete log.skips[i];inst=null;}else{if(!endSet){pick=r.s[i];pickEnd=pick+b.d;ti.value=toInput(pick);showEnd();}log.skips[i]=true;delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveEvents();}
     saveLog();render();renderLog();skUi();};
   if($("sClear"))$("sClear").onclick=()=>{delete log.starts[i];if(log.ends)delete log.ends[i];events=events.filter(x=>x.blk!==i);saveLog();saveEvents();closeSheet();render();renderLog();toast("Entry cleared");};
-  $("sClose").onclick=finish;$("sbg").onclick=finish;
+  $("sClose").onclick=()=>{if(runNow&&!endDirty){let x=near(clock(),pick);if(x<pick)x=pick;pickEnd=x;endSet=true;endDirty=true;dirty=true;showEnd();persist();closeSheet();sheetPersist=null;toast(b.label+" ended "+fmt(x));return;}finish();};$("sbg").onclick=finish;
 }
 // live block counter, updated every second
 function tick(){const n=Date.now();document.querySelectorAll(".timer").forEach(el=>{const s=Math.max(0,Math.floor((n-+el.dataset.since)/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;el.textContent=(h?h+":"+pad(m):m)+":"+pad(x);});}
