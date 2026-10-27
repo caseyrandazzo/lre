@@ -342,12 +342,13 @@ function inCycle(stage,m){return m<stage.wake?m+1440:m;}
    Blocks run back to back from the morning start. A block with a fixed clock time ("at") always starts then.
    A block with 0 minutes fills the gap until the next block. A logged start moves everything after it,
    unless it is within the grace period of where it was due. */
-function chain(stage,st,sk,durs,grace,endAt,en){en=en||{};
+function chain(stage,st,sk,durs,grace,endAt,en,rel){en=en||{};
   const bl=stage.blocks,n=bl.length,base=[],disp=[];
   for(let i=0;i<n;i++){
     let e;
     if(bl[i].at!=null)e=bl[i].at;
     else if(i===0)e=stage.wake;
+    else if(rel&&bl[i].t==="feed"&&(()=>{for(let j=i-1;j>=0;j--)if(bl[j].t==="feed")return (e=base[j]+(rel[i]-rel[j]),true);return false;})()){}
     else if(en[i-1]!=null&&!sk[i-1])e=en[i-1];
     else e=bl[i-1].d===0&&!sk[i-1]&&st[i]==null?base[i-1]:base[i-1]+durs[i-1];
     if(st[i]!=null){const v=st[i];base[i]=grace&&Math.abs(v-e)<=grace?e:v;disp[i]=v;}
@@ -378,7 +379,8 @@ function computePart(stage,st,sk,hold,grace,endAt,en){
   const clip=c=>{for(let i=0;i<n-1;i++)if(!sk[i]&&!(en&&en[i]!=null)&&c.ends[i]>c.base[i+1])c.ends[i]=Math.max(c.base[i],c.base[i+1]);return c;};
   // a skipped nap is still awake time, so it keeps its length and nothing after it moves up
   const durs=bl.map(b=>b.d);
-  let c=clip(chain(stage,st,sk,durs,grace,endAt,en));
+  // each feed comes the planned gap after the feed before it, however the blocks in between went
+  let c=clip(chain(stage,st,sk,durs,grace,endAt,en,plan));
   let lastLogged=-1;for(let i=0;i<n;i++)if(st[i]!=null||sk[i]||(en&&en[i]!=null))lastLogged=i;
   const trimmed={};
   const bi=bl.findIndex(b=>b.t==="night");
@@ -387,7 +389,7 @@ function computePart(stage,st,sk,hold,grace,endAt,en){
     const adj=[];for(let j=bi-1;j>lastLogged;j--)if(bl[j].t==="nap"&&!sk[j]&&bl[j].d>0)adj.push(j);
     if(delta>0){for(const j of adj){if(delta<=0)break;const cut=Math.min(delta,Math.max(0,durs[j]-30));if(cut>0){durs[j]-=cut;delta-=cut;trimmed[j]=-cut;}}}
     else if(delta<0&&adj.length){const j=adj[0];const add=Math.min(-delta,30);durs[j]+=add;trimmed[j]=add;}
-    c=clip(chain(stage,st,sk,durs,grace,endAt,en));
+    c=clip(chain(stage,st,sk,durs,grace,endAt,en,plan));
   }
   return {plan,s:c.disp,base:c.base,ends:c.ends,durs,trimmed,lastLogged,bi};
 }
