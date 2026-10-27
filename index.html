@@ -377,7 +377,7 @@ function compute(stage,lg,hold,grace){
   const bl=stage.blocks,n=bl.length,k=splitAt(stage),st=lg.starts||{},sk=lg.skips||{};
   const en=lg.ends||{};
   const sub=(lo,hi,shift)=>{const a={},b={},c={};for(let i=lo;i<hi;i++){if(st[i]!=null){let v=+st[i];if(shift&&v>=1440)v-=1440;a[i-lo]=v;}if(en[i]!=null){let v=+en[i];if(shift&&v>=1440)v-=1440;c[i-lo]=v;}if(sk[i])b[i-lo]=true;}return [a,b,c];};
-  const [ds,dk,de]=sub(0,k,false),day=computePart({wake:stage.wake,blocks:bl.slice(0,k)},ds,dk,hold,grace,k<n?1440:null,de,lg===log?events.filter(e=>e.t==="bottle"&&e.blk==null).map(e=>e.at):null);
+  const [ds,dk,de]=sub(0,k,false),day=computePart({wake:stage.wake,blocks:bl.slice(0,k)},ds,dk,hold,grace,k<n?1440:null,de,(lg===log||lg.live)?events.filter(e=>e.t==="bottle"&&e.blk==null).map(e=>e.at):null);
   const out={plan:day.plan.slice(),s:day.s.slice(),base:day.base.slice(),ends:day.ends.slice(),durs:day.durs.slice(),trimmed:day.trimmed,lastLogged:day.lastLogged,bi:day.bi,k};
   if(k<n){const [os,ok,oe]=sub(k,n,true);
     const ov=computePart({wake:0,blocks:bl.slice(k).map(b=>{const c=Object.assign({},b);if(c.at!=null)c.at-=1440;return c;})},os,ok,false,grace,stage.wake,oe);
@@ -460,6 +460,14 @@ function renderDays(){
   });
 }
 let wantScroll=true,renderTok=0;
+// a block you started keeps its timer going until you stop it, even past its planned length
+function timed(b){return b.d>0&&b.t!=="grace"&&b.t!=="night";}
+function liveCompute(stage,isToday){
+  let r=compute(stage,log,cfg.hold,cfg.grace);if(!isToday)return r;
+  const now=nowIn(stage),st=log.starts||{},en=log.ends||{},sk=log.skips||{};let lg=null;
+  stage.blocks.forEach((b,i)=>{if(timed(b)&&st[i]!=null&&en[i]==null&&!sk[i]&&now>=r.s[i]&&now>r.ends[i]){lg=lg||JSON.parse(JSON.stringify(log));lg.live=true;lg.ends=lg.ends||{};lg.ends[i]=now;}});
+  if(lg){r=compute(stage,lg,cfg.hold,cfg.grace);r.liveEnds=lg.ends;}return r;
+}
 function placeNow(tl,spans,now){
   if(!spans.length)return;
   let y=null;const inn=spans.find(x=>now>=x.start&&now<x.end);
@@ -482,7 +490,7 @@ function render(){
   else pv.hidden=true;
   const tips=(stage.tips||[]).concat(stage.placeholder?[]:GENERAL_TIPS.filter((t,k)=>k>0||cfg.grace));
   $("tips").hidden=!tips.length;$("tipList").innerHTML="";tips.forEach(t=>{const li=document.createElement("li");li.textContent=t;$("tipList").appendChild(li);});
-  const r=compute(stage,log,cfg.hold,cfg.grace);
+  const r=liveCompute(stage,isToday);
   const tl=$("tl");tl.innerHTML="";
   const now=nowIn(stage);
   const bi=r.bi>=0?r.bi:r.k-1;const shiftBed=r.base[bi]-r.plan[bi];
@@ -525,7 +533,7 @@ function render(){
     card.style.minHeight=Math.round(Math.min(len,150)*0.9+20)+"px";
     const live=isToday&&now>=r.base[i]&&now<end&&!sk;
     // the counter only runs once you start a block yourself
-    const running=live&&logged&&!(log.ends||{})[i];
+    const running=isToday&&logged&&!sk&&(log.ends||{})[i]==null&&timed(b)&&now>=start;
     const past=isToday&&now>=end&&!live;
     if(sk)card.classList.add("skipped");else if(past&&!logged)card.classList.add("past");
     const chips=[];
@@ -539,11 +547,11 @@ function render(){
     const iv=sk?(log.instead||{})[i]:null,nt=((log.notes||{})[i])||"";
     const ivt=iv&&iv.t!=="other"?(iv.t==="nap"?"Napped ":"Played ")+fmt(iv.at)+" to "+fmt(iv.end)+" · "+dur(iv.end-iv.at):"";
     const un=[ivt,nt].filter(Boolean).join(" · ");
-    const actual=end-start,ended=(log.ends||{})[i]!=null;
+    const actual=end-start,ended=(log.ends||{})[i]!=null&&!running;
     let rng=actual>0?dur(actual):"";
     // a logged end shows when it ended, so it reads even when the next card starts later
     if(ended)rng="Ended "+fmt(end)+" · "+dur(actual)+(b.d>0&&actual!==b.d?" of "+dur(b.d):"");
-    if(running){const d0=pdate(selDate);d0.setMinutes(start);rng='<span class="timer" data-since="'+d0.getTime()+'"></span>'+(actual>0?" of "+dur(actual):"");}
+    if(running){const d0=pdate(selDate);d0.setMinutes(start);rng='<span class="timer" data-since="'+d0.getTime()+'"></span>'+(b.d>0?" of "+dur(b.d):"");}
     card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(un?'<span class="note un"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
     card.querySelector(".name").textContent=b.label;if(un)card.querySelector(".un").textContent=un;if(b.note)card.querySelector(".note").textContent=b.note;
     card.onclick=()=>openSheet(i,stage,r);
@@ -592,14 +600,14 @@ function openSheet(i,stage,r){
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
   if(sk&&iv0&&iv0.at!=null){pick=iv0.at;pickEnd=iv0.end!=null?iv0.end:pick+len;}
   // a block you started and haven't ended: Done ends it now
-  const runNow=isToday&&logged&&!sk&&(log.ends||{})[i]==null&&hasEnd&&nowIn(stage)>=r.s[i]&&nowIn(stage)<r.ends[i];
+  const runNow=isToday&&logged&&!sk&&(log.ends||{})[i]==null&&hasEnd&&timed(b)&&nowIn(stage)>=r.s[i];
   const h=$("sheetHost");
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
    (!logged&&!sk&&b.t!=="grace"?'<button class="btn primary" id="sLog">Log '+b.label.toLowerCase()+'</button>':"")+
    (bottle?'<div class="oz"><button class="btn" id="ozm" aria-label="Less">−</button><output id="ozv"></output><button class="btn" id="ozp" aria-label="More">+</button></div><button class="btn vd" id="vd">VD</button>':"")+
    '<label class="lbl">Start<input type="time" id="sTime" class="tfull"></label>'+
-   (isToday?'<button class="btn" id="sNow">Start now</button>':"")+
-   (hasEnd?'<label class="lbl">End<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">End now</button>':""):"")+
+   (isToday?'<button class="btn" id="sNow">Start timer</button>':"")+
+   (hasEnd?'<label class="lbl">End<input type="time" id="sEnd" class="tfull"></label>'+(isToday?'<button class="btn" id="sEndNow">Stop timer</button>':""):"")+
    (b.t==="bath"?'<button class="btn vd" id="sFake">Fake bath</button>':"")+
    '<div class="kinds fill" id="sInst" hidden>'+Object.keys(FILL).map(k=>'<button class="btn ik" data-k="'+k+'">'+FILL[k]+"</button>").join("")+"</div>"+
    '<input type="text" id="sNote" placeholder="Note (optional)" aria-label="Note">'+
@@ -615,7 +623,7 @@ function openSheet(i,stage,r){
   ti.addEventListener("input",upd);ti.addEventListener("change",()=>{upd();persist();});
   const updEnd=()=>{if(!ei)return;const m=fromInput(ei.value);if(m==null)return;let x=near(m,pick);if(x<pick)x+=1440;if(x!==pickEnd){pickEnd=x;endSet=true;endDirty=true;dirty=true;}};
   if(ei){ei.addEventListener("input",updEnd);ei.addEventListener("change",()=>{updEnd();persist();});}
-  if($("sEndNow"))$("sEndNow").onclick=e=>{let x=near(clock(),pick);if(x<pick)x=pick;pickEnd=x;endSet=true;endDirty=true;dirty=true;showEnd();persist();const bt=e.currentTarget;bt.classList.add("ok");bt.textContent="Ended "+fmt(pickEnd)+" ✓";};
+  if($("sEndNow"))$("sEndNow").onclick=e=>{let x=near(clock(),pick);if(x<pick)x=pick;pickEnd=x;endSet=true;endDirty=true;dirty=true;showEnd();persist();const bt=e.currentTarget;bt.classList.add("ok");bt.textContent="Stopped "+fmt(pickEnd)+" ✓";};
   if(bottle){const so=()=>{$("ozv").textContent=oz+" oz";note();};so();$("ozm").onclick=()=>{oz=Math.max(0,oz-0.25);dirty=true;so();persist();};$("ozp").onclick=()=>{oz+=0.25;dirty=true;so();persist();};}
   note();
   let vdOn=!!vdOwner(),vdDirty=false;
