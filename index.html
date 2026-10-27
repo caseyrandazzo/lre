@@ -94,6 +94,7 @@ details.tips ul{margin:8px 0 2px;padding-left:18px;display:flex;flex-direction:c
 .b-extra{background:var(--surface);box-shadow:inset 3px 0 0 var(--dot)}
 .b-gap{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);border-style:dashed}
 .b-gap .name{color:var(--muted)}
+.b-sugg{opacity:.55;border:1.5px dashed var(--line)}
 .btn:active{transform:scale(.97);filter:brightness(1.25)}
 .btn.ok{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip.late{color:var(--shift)} .chip.done{color:var(--ok)} .chip.live{background:var(--fg);color:var(--bg)}
@@ -492,13 +493,20 @@ function render(){
   const spans=[];
   // entries from the Log tab that aren't tied to a block show in the schedule at their time
   const loose=events.filter(e=>e.blk==null&&e.inst==null&&(e.t==="bottle"||e.t==="nap"||e.t==="play"||e.t==="bath"||e.t==="note"||e.t==="diaper")).sort((a,b)=>a.at-b.at);
-  let li=0,prevStart=-1e9,prevEnd=null;
+  let li=0,prevStart=-1e9,prevEnd=null,lastFeed=false;
+  const looseEnd=e=>e.end!=null?e.end:e.at+(e.t==="bottle"?30:15);
+  // what actually happened; a skipped block that falls inside it is hidden
+  const actual=loose.filter(e=>e.t!=="diaper"&&e.t!=="note").map(e=>[e.at,looseEnd(e)]).concat(order(stage).filter(i=>(log.starts||{})[i]!=null&&!(log.skips||{})[i]).map(i=>[r.s[i],r.ends[i]]));
+  const covered=(a,z)=>actual.some(([x,y])=>Math.min(z,y)-Math.max(a,x)>=Math.min(10,(z-a)/2));
   const addLabel=t=>{const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(t);tl.appendChild(lab);};
   const addLoose=e=>{addLabel(e.at);const c=document.createElement("button");c.className="block b-extra";c.style.setProperty("--dot",EV[e.t].dot);
     c.innerHTML='<div class="row"><span class="name"></span></div>'+(e.note&&e.t!=="note"?'<span class="note un"></span>':"");c.querySelector(".name").textContent=evTitle(e,stage);
     if(e.note&&e.t!=="note")c.querySelector(".un").textContent=e.note;c.onclick=()=>openEvSheet(e.t,e);tl.appendChild(c);
-    const en=e.end!=null?e.end:e.at+15;spans.push({card:c,start:e.at,end:en});if(prevEnd==null||en>prevEnd)prevEnd=en;};
-  const addGap=(a,z)=>{addLabel(a);const c=document.createElement("button");c.className="block b-gap";c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
+    const en=looseEnd(e);spans.push({card:c,start:e.at,end:en});if(prevEnd==null||en>prevEnd)prevEnd=en;if(e.t!=="diaper"&&e.t!=="note")lastFeed=e.t==="bottle";};
+  // right after a feed, open time is suggested as play then nap, like the rest of the day
+  const addSugg=(a,z,t,label)=>{addLabel(a);const c=document.createElement("button");c.className="block b-sugg b-"+t;c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
+    c.innerHTML='<div class="row"><span class="name">'+label+'</span><span class="range">'+dur(z-a)+'</span></div>';c.onclick=()=>openGapSheet(a,z,t);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
+  const addGap=(a,z)=>{if(lastFeed&&z-a>=45){addSugg(a,a+30,"play","Play");addSugg(a+30,z,"nap","Nap");lastFeed=false;return;}addLabel(a);const c=document.createElement("button");c.className="block b-gap";c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
     c.innerHTML='<div class="row"><span class="name">Open time</span><span class="range">'+dur(z-a)+'</span></div><span class="note">Tap to add what she did</span>';
     c.onclick=()=>openGapSheet(a,z);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
   const items=order(stage).map((i,k)=>({i,k,start:r.s[i]})).concat(loose.map((e,k)=>({e,k:1000+k,start:e.at})));
@@ -507,7 +515,9 @@ function render(){
     if(it.e){if(prevEnd!=null&&it.e.at-prevEnd>=15)addGap(prevEnd,it.e.at);addLoose(it.e);return;}
     const i=it.i,b=stage.blocks[i];
     const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
+    if(sk&&!(log.notes||{})[i]&&!(log.instead||{})[i]&&covered(start,start+b.d))return;
     if(prevEnd!=null&&start-prevEnd>=15)addGap(prevEnd,start);
+    lastFeed=b.t==="feed"&&!sk;
     prevStart=start;prevEnd=Math.max(prevEnd==null?-1e9:prevEnd,sk?start+b.d:end);
     const lab=document.createElement("div");lab.className="tlabel";lab.textContent=fmt(start);tl.appendChild(lab);
     const card=document.createElement("button");card.className="block b-"+b.t;
@@ -522,7 +532,7 @@ function render(){
     if((log.fake||{})[i])chips.push('<span class="chip">Fake bath</span>');
     if(events.some(x=>x.blk===i&&x.vd))chips.push('<span class="chip">VD</span>');
     if(logged){if(r.base[i]!==start)chips.push('<span class="chip">Within grace, rest of day unchanged</span>');}
-    const sh=r.s[i]-r.plan[i];if(Math.abs(sh)>=15&&!sk&&i<r.k)chips.push('<span class="chip late">'+dur(sh)+(sh>0?" late":" early")+"</span>");
+    const sh=r.s[i]-r.plan[i];if(Math.abs(sh)>=15&&!sk&&i<r.k&&b.t==="feed")chips.push('<span class="chip late">'+dur(sh)+(sh>0?" late":" early")+"</span>");
     if(r.trimmed[i])chips.push('<span class="chip late">'+(r.trimmed[i]<0?"Shortened ":"Lengthened ")+dur(r.trimmed[i])+"</span>");
     if(sk)chips.push('<span class="chip">Skipped</span>');
     // length only; the clock times are already on the left. A live block counts up instead.
@@ -531,7 +541,8 @@ function render(){
     const un=[ivt,nt].filter(Boolean).join(" · ");
     const actual=end-start,ended=(log.ends||{})[i]!=null;
     let rng=actual>0?dur(actual):"";
-    if(ended&&b.d>0&&actual!==b.d)rng=dur(actual)+" · planned "+dur(b.d);
+    // a logged end shows when it ended, so it reads even when the next card starts later
+    if(ended)rng="Ended "+fmt(end)+" · "+dur(actual)+(b.d>0&&actual!==b.d?" of "+dur(b.d):"");
     if(running){const d0=pdate(selDate);d0.setMinutes(start);rng='<span class="timer" data-since="'+d0.getTime()+'"></span>'+(actual>0?" of "+dur(actual):"");}
     card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(un?'<span class="note un"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
     card.querySelector(".name").textContent=b.label;if(un)card.querySelector(".un").textContent=un;if(b.note)card.querySelector(".note").textContent=b.note;
@@ -722,12 +733,12 @@ function subTrends(){
     Object.keys(trendDocs).concat(Object.keys(m)).forEach(k=>{if(k>=from&&k!==selDate)trendDocs[k]=m[k]||[];});if(!$("trendsView").hidden)renderTrends();},()=>{});}
 }
 function evTitle(e,stage){
-  if(e.t==="bottle")return "Bottle · "+(+e.oz||0)+" oz"+(e.end!=null?" · "+dur(e.end-e.at):"")+(e.vd?" · VD":"");
+  if(e.t==="bottle")return "Bottle · "+(+e.oz||0)+" oz"+(e.end!=null?" · to "+fmt(e.end):"")+(e.vd?" · VD":"");
   if(e.t==="diaper")return "Diaper · "+(DIAPER[e.kind]||"");
   if(e.t==="note")return e.note||"Note";
   const n=EV[e.t].label;
   if(e.end==null){const live=selDate===cycleToday()?nowIn(stage)-e.at:null;return n+" in progress"+(live!=null&&live>=0?" · "+dur(live):"");}
-  return n+" · "+dur(e.end-e.at);
+  return n+" · to "+fmt(e.end)+" · "+dur(e.end-e.at);
 }
 function renderQuick(){
   const q=$("quick");if(q.childElementCount)return;
