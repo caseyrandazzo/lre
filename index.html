@@ -459,7 +459,7 @@ function renderDays(){
     b.onclick=()=>{selDate=ds;wantScroll=true;loadDay();loadEvents();};host.appendChild(b);}
   });
 }
-const BUILD="b20261027-1830";
+const BUILD="b20261028-0640";
 // pick up a newly uploaded version on its own: check when the app comes back to the front
 async function checkUpdate(){try{const t=await (await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"})).text();const m=t.match(/const BUILD="([^"]+)"/);if(m&&m[1]!==BUILD&&!$("sheetHost").innerHTML)location.reload();}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate();});setInterval(checkUpdate,300000);
@@ -494,6 +494,7 @@ function render(){
   else pv.hidden=true;
   const tips=(stage.tips||[]).concat(stage.placeholder?[]:GENERAL_TIPS.filter((t,k)=>k>0||cfg.grace));
   $("tips").hidden=!tips.length;$("tipList").innerHTML="";tips.forEach(t=>{const li=document.createElement("li");li.textContent=t;$("tipList").appendChild(li);});
+  earlyFix(stage);
   const r=liveCompute(stage,isToday);
   const tl=$("tl");tl.innerHTML="";
   const now=nowIn(stage);
@@ -638,7 +639,7 @@ function openSheet(i,stage,r){
   note();
   let vdOn=!!vdOwner(),vdDirty=false;
   if($("vd")){const sv=()=>$("vd").setAttribute("aria-pressed",vdOn);sv();$("vd").onclick=()=>{vdOn=!vdOn;vdDirty=true;dirty=true;sv();persist();};}
-  const save=at=>{const k=setStart(i,at,oz,endDirty?pickEnd:undefined,vdDirty?vdOn:undefined,timed(b));toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
+  const save=at=>{const k=setStart(i,at,oz,endDirty?pickEnd:undefined,vdDirty?vdOn:undefined,timed(b));if(k!=="early")toast(b.label+" logged at "+fmt(at)+(k?", added to the log":""));};
   // a note or fake-bath mark saves on its own and doesn't count as logging the block
   const extras=()=>{const nt=$("sNote").value.trim();let ch=false;log.notes=log.notes||{};log.fake=log.fake||{};
     if(nt!==note0){note0=nt;if(nt)log.notes[i]=nt;else delete log.notes[i];const e=events.find(x=>x.blk===i);if(e){if(nt)e.note=nt;else delete e.note;saveEvents();}ch=true;}
@@ -736,7 +737,7 @@ function cacheEv(){LS.set("ev:"+selDate,{date:selDate,items:events});trendDocs[s
 let evKnown={},evLoaded=false;
 function loadEvents(){
   if(unEv){unEv();unEv=null;}
-  const ds=selDate;evLoaded=false;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});relayEv(ds,events);renderLog();render();
+  const ds=selDate;evLoaded=false;evFor=null;events=((LS.get("ev:"+ds)||{}).items)||[];evKnown={};events.forEach(e=>{evKnown[e.id]=JSON.stringify(e);});relayEv(ds,events);evFor=ds;renderLog();render();
   if(db){unEv=db.collection("events").where("date","==",ds).onSnapshot(x=>{if(x.metadata.hasPendingWrites)return;const k={};
     events=x.docs.map(d=>{const v=JSON.parse(JSON.stringify(d.data()));delete v.date;k[v.id]=JSON.stringify(v);return v;});
     evKnown=k;const moved=relayEv(ds,events);if(moved&&!x.metadata.fromCache)saveEvents();cacheEv();renderLog();render();if(!$("trendsView").hidden)renderTrends();if(!x.metadata.fromCache){evLoaded=true;healStarts();}},()=>{});}
@@ -798,8 +799,17 @@ function newId(){return "e"+Date.now()+Math.random().toString(36).slice(2,6);}
 function prevDs(ds){const d=pdate(ds);d.setDate(d.getDate()-1);return dstr(d);}
 function closeOpenNaps(at){events.forEach(e=>{if(e.t==="nap"&&e.end==null&&e.at<at)e.end=at;});}
 // Logging a scheduled block writes the matching log entry (bottle, nap or night sleep) and keeps the two linked.
+// Moms on Call early wake: a feed 30+ minutes before the start-of-day feed is an extra feed; the day still starts on time
+function earlyAt(stage,i,at){const b=stage.blocks[i];return i===0&&b&&b.t==="feed"&&at<stage.wake-30;}
+let evFor=null;
+function earlyFix(stage){if(evFor!==selDate)return;const a=(log.starts||{})[0];if(a==null||!earlyAt(stage,0,a))return;
+  const e=events.find(x=>x.blk===0);if(e){delete e.blk;delete e.run;if(e.end==null&&log.ends&&log.ends[0]!=null)e.end=log.ends[0];}
+  else events.push({id:newId(),t:"bottle",at:a,end:(log.ends||{})[0],oz:lastOz(),lay:2});
+  delete log.starts[0];if(log.ends)delete log.ends[0];if(log.run)delete log.run[0];saveLog();saveEvents();}
 function setStart(i,at,oz,end,vd,run){
   const stage=stageFor(selDate),b=stage.blocks[i],k=kindFor(b);
+  if(earlyAt(stage,i,at)){const e={id:newId(),t:"bottle",at,oz,lay:2};if(end!=null)e.end=end;else if(run)e.run=true;if(vd!=null)applyVd(e,vd);events.push(e);saveEvents();render();renderLog();
+    toast("Early wake feed logged. The start-of-day feed stays at "+fmt(stage.wake));return "early";}
   log.starts=log.starts||{};log.skips=log.skips||{};log.ends=log.ends||{};log.starts[i]=at;delete log.skips[i];
   log.run=log.run||{};
   if(end!=null){log.ends[i]=end;delete log.run[i];}else{if(log.ends[i]!=null&&log.ends[i]<=at)delete log.ends[i];if(run&&log.ends[i]==null)log.run[i]=true;}saveLog();
@@ -813,7 +823,7 @@ function setStart(i,at,oz,end,vd,run){
 function linkSchedule(t,at){
   const stage=stageFor(selDate);const r=compute(stage,log,cfg.hold,cfg.grace);const st=log.starts||{},sk=log.skips||{};
   let best=-1,bd=1e9;
-  stage.blocks.forEach((b,i)=>{if(st[i]!=null||sk[i]||events.some(x=>x.blk===i))return;
+  stage.blocks.forEach((b,i)=>{if(st[i]!=null||sk[i]||events.some(x=>x.blk===i)||earlyAt(stage,i,at))return;
     const ok=t==="bottle"?isBottle(b):t==="nap"?b.t==="nap":(b.t==="night"&&i===r.bi);
     if(!ok)return;const d=Math.abs(r.base[i]-at);if(d<bd){bd=d;best=i;}});
   if(best<0||bd>(t==="night"?180:90))return -1;
