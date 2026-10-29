@@ -141,8 +141,8 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
 .kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .kinds.fill{grid-template-columns:1fr 1fr 1fr}
 .vd{margin-top:8px;width:100%}
-.vd[aria-pressed="true"]::after{content:" ✓"}
-.kind[aria-pressed="true"],.vd[aria-pressed="true"],#ranges button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.vd[aria-pressed="true"]::after,.ik[aria-pressed="true"]::after{content:" ✓"}
+.kind[aria-pressed="true"],.ik[aria-pressed="true"],.vd[aria-pressed="true"],#ranges button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .lbl{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 #ranges{display:flex;gap:6px} #ranges button{flex:1;padding:9px}
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -459,13 +459,14 @@ function renderDays(){
     b.onclick=()=>{selDate=ds;wantScroll=true;loadDay();loadEvents();};host.appendChild(b);}
   });
 }
-const BUILD="b20261028-0640";
+const BUILD="b20261029-0730";
 // pick up a newly uploaded version on its own: check when the app comes back to the front
 async function checkUpdate(){try{const t=await (await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"})).text();const m=t.match(/const BUILD="([^"]+)"/);if(m&&m[1]!==BUILD&&!$("sheetHost").innerHTML)location.reload();}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate();});setInterval(checkUpdate,300000);
 let wantScroll=true,renderTok=0;
 // a block you started keeps its timer going until you stop it, even past its planned length
-function timed(b){return b.d>0&&b.t!=="grace"&&b.t!=="night";}
+// night sleep has no set length but can still be timed and given an end
+function timed(b){return b.t!=="grace"&&(b.d>0||b.t==="night");}
 function liveCompute(stage,isToday){
   let r=compute(stage,log,cfg.hold,cfg.grace);if(!isToday)return r;
   const now=nowIn(stage),st=log.starts||{},en=log.ends||{},sk=log.skips||{};let lg=null;
@@ -573,28 +574,45 @@ function render(){
 
 /* ---------- logging sheet ---------- */
 let sheetPersist=null;
-function closeSheet(){$("sheetHost").innerHTML="";}
+function closeSheet(){$("sheetHost").innerHTML="";sheetPersist=null;}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&sheetPersist)try{sheetPersist();}catch(e){}});
 const INST={nap:"Napped",play:"Played",other:"Other"};
 // filling open time: pick what she did, times default to the whole gap
 // filling open time or a skipped slot: feed and diaper open their usual sheets, the rest take a time range
 const FILL={bottle:"Feed",nap:"Nap",play:"Play",bath:"Bath",diaper:"Diaper",note:"Other"};
 function openGapSheet(a,z,pre){
-  let t=null;const h=$("sheetHost");
-  h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh">'+fmt(a)+" to "+fmt(z)+'</h2>'+
+  let t=null;const h=$("sheetHost"),stage=stageFor(selDate),isToday=selDate===cycleToday();
+  const nowM=isToday?nowIn(stage):null,inGap=nowM!=null&&nowM>=a-5&&nowM<z+120;
+  h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
+   '<p class="diaper-hint" id="gHint">What did she do?</p>'+
    '<div class="kinds fill">'+Object.keys(FILL).map(k=>'<button class="btn ik" data-k="'+k+'">'+FILL[k]+"</button>").join("")+"</div>"+
-   '<div id="gRest" hidden><label class="lbl">Start<input type="time" id="gA" class="tfull"></label><label class="lbl">End<input type="time" id="gZ" class="tfull"></label>'+
-   '<input type="text" id="gN" placeholder="Note (optional)" aria-label="Note"><button class="btn primary" id="gSave">Save</button></div></div>';
+   '<div id="gRest" hidden><label class="lbl">Start<input type="time" id="gA" class="tfull"></label>'+(inGap?'<button class="btn" id="gNow">Start timer</button>':"")+
+   '<label class="lbl" id="gZl">End<input type="time" id="gZ" class="tfull"></label>'+(inGap?'<button class="btn" id="gEndNow">Stop timer</button>':"")+
+   '<input type="text" id="gN" placeholder="Note (optional)" aria-label="Note"></div>'+
+   '<button class="btn" id="gDone">Close</button></div>';
+  $("sh").textContent="Awake · "+fmt(a)+" to "+fmt(z);
   $("gA").value=toInput(a);$("gZ").value=toInput(z);
+  let run=false;
   const pickK=k=>{if(k==="bottle"||k==="diaper"){closeSheet();sheetPersist=null;openEvSheet(k,null,{at:a,end:k==="bottle"?Math.min(a+30,z):null});return;}
-    t=k;document.querySelectorAll(".ik").forEach(y=>y.setAttribute("aria-pressed",y.dataset.k===k));$("gRest").hidden=false;
+    t=k;document.querySelectorAll(".ik").forEach(y=>y.setAttribute("aria-pressed",y.dataset.k===k));$("gRest").hidden=false;$("gHint").hidden=true;
+    $("gZl").hidden=k==="note";if($("gEndNow"))$("gEndNow").hidden=k==="note";if($("gNow"))$("gNow").hidden=k==="note";
+    $("gDone").textContent="Done";$("gDone").classList.add("primary");
     $("gN").placeholder=k==="note"?"What did she do?":"Note (optional)";if(k==="note")$("gN").focus();};
   document.querySelectorAll(".ik").forEach(x=>x.onclick=()=>pickK(x.dataset.k));
-  const save=()=>{if(!t){closeSheet();sheetPersist=null;return;}const nt=$("gN").value.trim();
-    const at=near(fromInput($("gA").value)??a,a);let end=near(fromInput($("gZ").value)??z,at);if(end<at)end=at;
-    const e={id:newId(),t,at,lay:2};if(t!=="note")e.end=end;if(nt)e.note=nt;else if(t==="note")e.note="Other";
-    events.push(e);saveEvents();closeSheet();sheetPersist=null;render();renderLog();toast("Saved");};
-  $("gSave").onclick=save;$("sbg").onclick=save;sheetPersist=save;
+  // Start timer: from now, running until it's stopped. Stop timer: ends it now. Both show a check so you know it took.
+  const mark=(bt,txt)=>{bt.classList.add("ok");bt.textContent=txt+" ✓";};
+  if($("gNow"))$("gNow").onclick=e=>{$("gA").value=toInput(nowM);$("gZ").value="";run=true;mark(e.currentTarget,"Started "+fmt(nowM));if($("gEndNow")){$("gEndNow").classList.remove("ok");$("gEndNow").textContent="Stop timer";}};
+  if($("gEndNow"))$("gEndNow").onclick=e=>{const n=nowIn(stage);$("gZ").value=toInput(n);run=false;mark(e.currentTarget,"Stopped "+fmt(n));};
+  $("gZ").addEventListener("input",()=>{if($("gZ").value)run=false;});
+  // Done, tapping outside, or leaving the app all save what's entered
+  const save=()=>{sheetPersist=null;if(!t){closeSheet();return;}const nt=$("gN").value.trim();
+    const at=near(fromInput($("gA").value)??a,a);let end=fromInput($("gZ").value);
+    const e={id:newId(),t,at,lay:2};
+    if(t!=="note"){if(end==null&&(run||isToday))e.run=true;else{end=near(end??z,at);if(end<at)end=at;e.end=end;}}
+    if(nt)e.note=nt;else if(t==="note")e.note="Other";
+    events.push(e);saveEvents();closeSheet();render();renderLog();
+    toast(FILL[t]+(t==="note"?" saved":e.run?" started "+fmt(at):" saved "+fmt(at)+" to "+fmt(e.end)));};
+  $("gDone").onclick=save;$("sbg").onclick=save;sheetPersist=save;
   if(pre)pickK(pre);
 }
 function openSheet(i,stage,r){
@@ -605,7 +623,7 @@ function openSheet(i,stage,r){
   const due=isToday?r.base[i]<=nowIn(stage):selDate<cycleToday();
   let dirty=false;
   // end defaults to the expected end and follows the start until someone edits it
-  const hasEnd=b.d>0&&b.t!=="grace",len=sk?b.d:Math.max(0,r.ends[i]-r.s[i]);
+  const hasEnd=timed(b),len=sk?b.d:Math.max(0,r.ends[i]-r.s[i]);
   const iv0=((log.instead||{})[i])||null;
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
   if(sk&&iv0&&iv0.at!=null){pick=iv0.at;pickEnd=iv0.end!=null?iv0.end:pick+len;}
@@ -857,7 +875,7 @@ function openEvSheet(t,e,pre){
   if($("vd")){const sv=()=>$("vd").setAttribute("aria-pressed",vdOn);sv();$("vd").onclick=()=>{vdOn=!vdOn;vdDirty=true;sv();};}
   document.querySelectorAll(".kind").forEach(b=>b.onclick=()=>{it.kind=b.dataset.k;document.querySelectorAll(".kind").forEach(x=>x.setAttribute("aria-pressed",x===b));if(isNew)$("evSave").click();});
   const commit=()=>{
-    let msg="Saved";
+    sheetPersist=null;let msg=EV[t].label+" saved";
     if(isNew&&(t==="bottle"||t==="nap"))closeOpenNaps(it.at);
     if(isNew&&$("evLink")&&$("evLink").checked){const bi=linkSchedule(t,it.at);if(bi>=0){it.blk=bi;if(it.end!=null){log.ends=log.ends||{};log.ends[bi]=it.end;saveLog();}else if(it.run&&timed(stage.blocks[bi])){log.run=log.run||{};log.run[bi]=true;saveLog();}msg="Saved, and the schedule moved to match";}}
     if(!isNew&&it.blk!=null&&(it.at!==e.at||it.end!==e.end)){log.starts=log.starts||{};log.ends=log.ends||{};log.starts[it.blk]=it.at;if(hasEnd&&it.end!=null){log.ends[it.blk]=it.end;if(log.run)delete log.run[it.blk];}else delete log.ends[it.blk];saveLog();}
@@ -876,7 +894,12 @@ function openEvSheet(t,e,pre){
     commit();
   };
   if($("evDel"))$("evDel").onclick=()=>{events=events.filter(x=>x.id!==it.id);if(it.blk!=null&&log.starts){delete log.starts[it.blk];saveLog();}saveEvents();closeSheet();render();renderLog();toast("Deleted");};
-  $("evCancel").onclick=closeSheet;$("sbg").onclick=closeSheet;
+  // something entered (or a sheet opened from the schedule) counts as worth keeping; Cancel is the only way to discard
+  let touched=!isNew||!!pre;const sheet=$("sheetHost").querySelector(".sheet");
+  sheet.addEventListener("input",()=>{touched=true;});sheet.addEventListener("click",ev=>{if(ev.target.closest("#ozm,#ozp,#vd,.kind"))touched=true;});
+  const keep=()=>{sheetPersist=null;if(!touched||(t==="diaper"&&!it.kind)||(t==="note"&&!$("evNote").value.trim())){closeSheet();return;}$("evSave").click();if($("sheetHost").innerHTML)sheetPersist=keep;};
+  sheetPersist=keep;
+  $("evCancel").onclick=()=>{sheetPersist=null;closeSheet();};$("sbg").onclick=keep;
 }
 
 /* ---------- trends ---------- */
