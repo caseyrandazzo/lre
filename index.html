@@ -414,10 +414,10 @@ async function saveCfg(){LS.set("cfg",cfg);if(db){try{await db.doc("config/main"
 let saving=Promise.resolve();
 let lastLog=null;
 function saveLog(){const ds=selDate,body=JSON.parse(JSON.stringify(log));LS.set("day:"+ds,body);
-  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{},notes:{},fake:{},instead:{},run:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
-    ["starts","skips","ends","notes","fake","instead","run"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
+  if(db){const prev=lastLog||{starts:{},skips:{}},patch={starts:{},skips:{},ends:{},notes:{},fake:{},instead:{},run:{},nogap:{}};if(body.lay&&prev.lay!==body.lay)patch.lay=body.lay;
+    ["starts","skips","ends","notes","fake","instead","run","nogap"].forEach(k=>{const a=prev[k]||{},b=body[k]||{};new Set([...Object.keys(a),...Object.keys(b)]).forEach(key=>{if(!(key in b))patch[k][key]=db.del();else if(a[key]!==b[key])patch[k][key]=b[key];});});
     // An empty map in a merge write replaces the stored map, which wiped the whole day. Send only what changed.
-    ["starts","skips","ends","notes","fake","instead","run"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
+    ["starts","skips","ends","notes","fake","instead","run","nogap"].forEach(k=>{if(!Object.keys(patch[k]).length)delete patch[k];});
     lastLog=body;if(!Object.keys(patch).length)return;
     saving=saving.then(()=>db.doc("days/"+ds).set(patch,{merge:true})).catch(()=>toast("Couldn't save that entry. Check your connection."));}}
 // Every log entry linked to a schedule block marks that block as started. Restores starts lost to the old save bug.
@@ -459,7 +459,7 @@ function renderDays(){
     b.onclick=()=>{selDate=ds;wantScroll=true;loadDay();loadEvents();};host.appendChild(b);}
   });
 }
-const BUILD="b20261029-0730";
+const BUILD="b20261029-0715";
 // pick up a newly uploaded version on its own: check when the app comes back to the front
 async function checkUpdate(){try{const t=await (await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"})).text();const m=t.match(/const BUILD="([^"]+)"/);if(m&&m[1]!==BUILD&&!$("sheetHost").innerHTML)location.reload();}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate();});setInterval(checkUpdate,300000);
@@ -519,15 +519,17 @@ function render(){
     if(e.note&&e.t!=="note")c.querySelector(".un").textContent=e.note;c.onclick=()=>openEvSheet(e.t,e);tl.appendChild(c);
     const en=looseEnd(e);spans.push({card:c,start:e.at,end:en});if(prevEnd==null||en>prevEnd)prevEnd=en;if(e.t!=="diaper"&&e.t!=="note")lastKind=e.t==="bottle"?"feed":e.t;};
   // right after a feed, open time is suggested as play then nap, like the rest of the day
-  const addSugg=(a,z,t,label)=>{addLabel(a);const c=document.createElement("button");c.className="block b-sugg b-"+t;c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
-    c.innerHTML='<div class="row"><span class="name">'+label+'</span><span class="range">'+dur(z-a)+'</span></div>';c.onclick=()=>openGapSheet(a,z,t);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
+  const addSugg=(a,z,t,label,g)=>{addLabel(a);const c=document.createElement("button");c.className="block b-sugg b-"+t;c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
+    c.innerHTML='<div class="row"><span class="name">'+label+'</span><span class="range">'+dur(z-a)+'</span></div>';c.onclick=()=>openGapSheet(a,z,t,g);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
   // time between a nap that ended early and what comes next is awake time; the next feed stays put
-  const addGap=(a,z,nextFeed)=>{if(lastKind==="feed"&&z-a>=45){addSugg(a,a+30,"play","Play");addSugg(a+30,z,"nap","Nap");lastKind=null;return;}
-    if(lastKind==="play"&&z-a>=30){addSugg(a,z,"nap","Nap");lastKind=null;return;}addLabel(a);const c=document.createElement("button");c.className="block b-gap";c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
+  // a removed stretch stays hidden for that day
+  const addGap=(a,z,nextFeed)=>{if((log.nogap||{})[a]){lastKind=null;return;}
+    if(lastKind==="feed"&&z-a>=45){addSugg(a,a+30,"play","Play",a);addSugg(a+30,z,"nap","Nap",a);lastKind=null;return;}
+    if(lastKind==="play"&&z-a>=30){addSugg(a,z,"nap","Nap",a);lastKind=null;return;}addLabel(a);const c=document.createElement("button");c.className="block b-gap";c.style.minHeight=Math.round(Math.min(z-a,150)*0.9+20)+"px";
     const inGap=isToday&&now>=a&&now<z;
     const rt=nextFeed?(inGap?"Feed in "+dur(z-now):"Until the "+fmt(z)+" feed"):dur(z-a);
     c.innerHTML='<div class="row"><span class="name">Awake</span><span class="range">'+rt+'</span></div><span class="note">Tap to log what she did</span>';
-    c.onclick=()=>openGapSheet(a,z);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
+    c.onclick=()=>openGapSheet(a,z,null,a);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
   const items=order(stage).map((i,k)=>({i,k,start:r.s[i]})).concat(loose.map((e,k)=>({e,k:1000+k,start:e.at})));
   items.sort((a,b)=>a.start-b.start||a.k-b.k);
   items.forEach(it=>{
@@ -580,7 +582,7 @@ const INST={nap:"Napped",play:"Played",other:"Other"};
 // filling open time: pick what she did, times default to the whole gap
 // filling open time or a skipped slot: feed and diaper open their usual sheets, the rest take a time range
 const FILL={bottle:"Feed",nap:"Nap",play:"Play",bath:"Bath",diaper:"Diaper",note:"Other"};
-function openGapSheet(a,z,pre){
+function openGapSheet(a,z,pre,g){
   let t=null;const h=$("sheetHost"),stage=stageFor(selDate),isToday=selDate===cycleToday();
   const nowM=isToday?nowIn(stage):null,inGap=nowM!=null&&nowM>=a-5&&nowM<z+120;
   h.innerHTML='<div class="sheet-bg" id="sbg"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh"><h2 id="sh"></h2>'+
@@ -589,7 +591,7 @@ function openGapSheet(a,z,pre){
    '<div id="gRest" hidden><label class="lbl">Start<input type="time" id="gA" class="tfull"></label>'+(inGap?'<button class="btn" id="gNow">Start timer</button>':"")+
    '<label class="lbl" id="gZl">End<input type="time" id="gZ" class="tfull"></label>'+(inGap?'<button class="btn" id="gEndNow">Stop timer</button>':"")+
    '<input type="text" id="gN" placeholder="Note (optional)" aria-label="Note"></div>'+
-   '<button class="btn" id="gDone">Close</button></div>';
+   (g!=null?'<div class="btnrow"><button class="btn" id="gDel">Remove</button></div>':"")+'<button class="btn" id="gDone">Close</button></div>';
   $("sh").textContent="Awake · "+fmt(a)+" to "+fmt(z);
   $("gA").value=toInput(a);$("gZ").value=toInput(z);
   let run=false;
@@ -613,6 +615,7 @@ function openGapSheet(a,z,pre){
     events.push(e);saveEvents();closeSheet();render();renderLog();
     toast(FILL[t]+(t==="note"?" saved":e.run?" started "+fmt(at):" saved "+fmt(at)+" to "+fmt(e.end)));};
   $("gDone").onclick=save;$("sbg").onclick=save;sheetPersist=save;
+  if($("gDel"))$("gDel").onclick=()=>{log.nogap=log.nogap||{};log.nogap[g]=true;saveLog();closeSheet();render();toast("Awake removed");};
   if(pre)pickK(pre);
 }
 function openSheet(i,stage,r){
