@@ -57,6 +57,8 @@ h1{font-family:var(--display);font-weight:500;font-size:2rem;line-height:1.1;mar
 .tabs{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
 .tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:600 .9rem var(--body);padding:8px;border-radius:9px;cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.dayrow{display:flex;gap:4px;align-items:stretch}.dayrow .days{flex:1;min-width:0}
+.dnav{flex:0 0 28px;border:1px solid var(--line);background:var(--surface);border-radius:10px;color:var(--fg);font-size:1.3rem;line-height:1;cursor:pointer;padding:0}
 .days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .day{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:6px 0;text-align:center;cursor:pointer;color:var(--fg);font-family:var(--body)}
 .day small{display:block;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
@@ -191,10 +193,10 @@ input[type=time],input[type=date],input[type=number],input[type=text],select{fon
     <button role="tab" id="tabLog" aria-selected="false">Log</button>
     <button role="tab" id="tabTrends" aria-selected="false">Trends</button>
   </div>
-  <div class="days" id="days"></div>
+  <div class="dayrow" id="dayRow"><button class="dnav" id="dPrev" aria-label="Previous week">‹</button><div class="days" id="days"></div><button class="dnav" id="dNext" aria-label="Next week">›</button></div>
   <section id="dayView" class="ed">
     <div class="preview" id="preview" hidden></div>
-    <button class="next" id="nextCard" hidden><span class="nk" id="nextKind"></span><span class="nn" id="nextName"></span><span class="ns" id="summary"></span><span class="ngo">Log it</span></button>
+    <button class="next" id="nextCard" hidden><span class="nk" id="nextKind"></span><span class="nn" id="nextName"></span><span class="ns" id="summary"></span><span class="ngo">Log</span></button>
     <details class="tips" id="tips"><summary>Tips for this stage</summary><ul id="tipList"></ul></details>
     <div class="tl" id="tl"></div>
   </section>
@@ -450,16 +452,20 @@ async function boot(){
 }
 
 /* ---------- rendering ---------- */
+// the strip shows the week around today; the arrows step a week back or forward, and the strip follows the picked day
 function renderDays(){
   ["days"].forEach(hid=>{
   const host=$(hid);host.innerHTML="";const today=cycleToday();const base=pdate(today);
+  const wk=Math.round(Math.round((pdate(selDate)-base)/864e5)/7);base.setDate(base.getDate()+7*wk);
   for(let k=-3;k<=3;k++){const d=new Date(base);d.setDate(d.getDate()+k);const ds=dstr(d);
     const b=document.createElement("button");b.className="day";b.setAttribute("aria-pressed",ds===selDate);
-    b.innerHTML="<small>"+(k===0?"Today":d.toLocaleDateString(undefined,{weekday:"short"}))+"</small><b>"+d.getDate()+"</b>";
+    b.innerHTML="<small>"+(ds===today?"Today":d.toLocaleDateString(undefined,{weekday:"short"}))+"</small><b>"+d.getDate()+"</b>"+(wk?'<small class="mo">'+d.toLocaleDateString(undefined,{month:"short"})+"</small>":"");
     b.onclick=()=>{selDate=ds;wantScroll=true;loadDay();loadEvents();};host.appendChild(b);}
   });
 }
-const BUILD="b20261029-0715";
+const stepWeek=n=>{const d=pdate(selDate);d.setDate(d.getDate()+7*n);selDate=dstr(d);wantScroll=true;loadDay();loadEvents();};
+$("dPrev").onclick=()=>stepWeek(-1);$("dNext").onclick=()=>stepWeek(1);
+const BUILD="b20261029-0815";
 // pick up a newly uploaded version on its own: check when the app comes back to the front
 async function checkUpdate(){try{const t=await (await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"})).text();const m=t.match(/const BUILD="([^"]+)"/);if(m&&m[1]!==BUILD&&!$("sheetHost").innerHTML)location.reload();}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate();});setInterval(checkUpdate,300000);
@@ -501,9 +507,13 @@ function render(){
   const now=nowIn(stage);
   const bi=r.bi>=0?r.bi:r.k-1;const shiftBed=r.base[bi]-r.plan[bi];
   $("summary").textContent=shiftBed===0?"Bedtime on schedule, "+fmt(r.base[bi]):(shiftBed>0?"Bedtime "+dur(shiftBed)+" later, ":"Bedtime "+dur(shiftBed)+" earlier, ")+(shiftBed?fmt(r.base[bi]):"");
-  let ni=-1;if(isToday)order(stage).forEach(i=>{const b=stage.blocks[i];if(ni<0&&b.t!=="grace"&&(log.starts||{})[i]==null&&!(log.skips||{})[i]&&r.ends[i]>now)ni=i;});
+  // up next comes after the latest block she actually started; anything before it (a play she slept through) is passed over.
+  // a block logged ahead of time hasn't happened yet, so it can still be next
+  let ni=-1;if(isToday){const O=order(stage).filter(i=>stage.blocks[i].t!=="grace"),st=log.starts||{},sk=log.skips||{};
+    const begun=i=>st[i]!=null&&r.s[i]<=now;let p=-1;O.forEach((i,k)=>{if(begun(i))p=k;});
+    O.slice(p+1).forEach(i=>{if(ni<0&&!begun(i)&&!sk[i]&&r.ends[i]>now)ni=i;});}
   $("nextCard").hidden=ni<0;
-  if(ni>=0){const b=stage.blocks[ni];$("nextKind").textContent=(r.base[ni]<=now?"Now":"Up next")+" · "+fmt(r.s[ni]);$("nextName").textContent=b.label;$("nextCard").onclick=()=>openSheet(ni,stage,r);}
+  if(ni>=0){const b=stage.blocks[ni];$("nextKind").textContent=r.base[ni]<=now?"Now":"Up next";$("nextName").textContent=b.label;$("nextCard").onclick=()=>openSheet(ni,stage,r);}
   const spans=[];
   // entries from the Log tab that aren't tied to a block show in the schedule at their time
   const loose=events.filter(e=>e.blk==null&&e.inst==null&&(e.t==="bottle"||e.t==="nap"||e.t==="play"||e.t==="bath"||e.t==="note"||e.t==="diaper")).sort((a,b)=>a.at-b.at);
@@ -618,6 +628,11 @@ function openGapSheet(a,z,pre,g){
   if($("gDel"))$("gDel").onclick=()=>{log.nogap=log.nogap||{};log.nogap[g]=true;saveLog();closeSheet();render();toast("Awake removed");};
   if(pre)pickK(pre);
 }
+// earliest entry logged on the day after ds, in minutes after that day's midnight
+function firstNext(ds){const d=pdate(ds);d.setDate(d.getDate()+1);const nx=dstr(d);
+  const items=nx===selDate?events:(trendDocs[nx]||((LS.get("ev:"+nx)||{}).items)||[]);
+  const st=Object.values((LS.get("day:"+nx)||{}).starts||{}).map(Number);
+  const all=items.map(e=>+e.at).concat(st).filter(x=>isFinite(x)&&x<1440);return all.length?Math.min(...all):null;}
 function openSheet(i,stage,r){
   const b=stage.blocks[i],logged=(log.starts||{})[i]!=null,sk=!!(log.skips||{})[i];
   const isToday=selDate===cycleToday(),bottle=isBottle(b),linked=events.find(x=>x.blk===i);
@@ -630,6 +645,10 @@ function openSheet(i,stage,r){
   const iv0=((log.instead||{})[i])||null;
   let endSet=(log.ends||{})[i]!=null,pickEnd=endSet?r.ends[i]:pick+len,endDirty=false;
   if(sk&&iv0&&iv0.at!=null){pick=iv0.at;pickEnd=iv0.end!=null?iv0.end:pick+len;}
+  // bedtime with no end yet: default to the first thing logged the next day instead of midnight
+  let anchor=false;
+  if(b.t==="night"&&!endSet&&!sk&&i<splitAt(stage)){const f=firstNext(selDate);if(f!=null&&f+1440>pick){pickEnd=f+1440;anchor=true;}}
+  if(anchor){endDirty=true;if(logged)dirty=true;}
   // a block you started and haven't ended: Done ends it now
   const runNow=isToday&&logged&&!sk&&(log.ends||{})[i]==null&&hasEnd&&timed(b)&&!!(log.run||{})[i]&&nowIn(stage)>=r.s[i];
   const h=$("sheetHost");
@@ -650,7 +669,7 @@ function openSheet(i,stage,r){
   const note=()=>{};
   const ei=$("sEnd");const showEnd=()=>{if(ei)ei.value=toInput(pickEnd);};showEnd();
   let cleared=false;
-  const upd=()=>{if(!ti.value){cleared=true;return;}cleared=false;const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;if(!endSet){pickEnd=pick+len;showEnd();}}};
+  const upd=()=>{if(!ti.value){cleared=true;return;}cleared=false;const m=fromInput(ti.value);if(m!=null&&near(m,r.base[i])!==pick){pick=near(m,r.base[i]);dirty=true;if(!endSet&&!anchor){pickEnd=pick+len;showEnd();}}};
   ti.addEventListener("input",upd);ti.addEventListener("change",()=>{upd();persist();});
   let endCleared=false;
   const updEnd=()=>{if(!ei)return;if(!ei.value){if((log.ends||{})[i]!=null)endCleared=true;return;}endCleared=false;const m=fromInput(ei.value);if(m==null)return;let x=near(m,pick);if(x<pick)x+=1440;if(x!==pickEnd){pickEnd=x;endSet=true;endDirty=true;dirty=true;}};
@@ -917,17 +936,21 @@ function dayStats(items){
 }
 function niceMax(m){if(m<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(m)));const r=m/p;return (r<=1?1:r<=2?2:r<=5?5:10)*p;}
 function barChart(title,days,val,fmtv,axis){
-  const W=340,H=150,L=34,B=22,T=8,N=days.length,vals=days.map(val),max=niceMax(Math.max(...vals));
+  // every day gets a label: month/day for a week, day numbers for a month with the month under the first day and each new month
+  const M=days.length>10,W=340,H=M?162:150,L=34,B=M?34:22,T=8,N=days.length,vals=days.map(val),max=niceMax(Math.max(...vals));
   const step=(W-L-4)/N,bw=Math.max(3,step*0.62),ph=H-B-T,y=v=>T+ph-(v/max)*ph;
   let s='<svg viewBox="0 0 '+W+" "+H+'" role="img" aria-label="'+title+'">';
   [0,max/2,max].forEach(g=>{s+='<line x1="'+L+'" x2="'+W+'" y1="'+y(g)+'" y2="'+y(g)+'" stroke="var(--line)" stroke-width="1"/><text x="'+(L-6)+'" y="'+(y(g)+3.5)+'" text-anchor="end" fill="var(--muted)" font-size="10">'+axis(g)+"</text>";});
-  const every=Math.ceil(N/6);
   days.forEach((d,i)=>{
     const v=vals[i],x=L+i*step+(step-bw)/2,top=y(v),hh=T+ph-top,r=Math.min(4,bw/2,hh);
     s+='<g class="col" data-i="'+i+'"><rect x="'+(L+i*step)+'" y="'+T+'" width="'+step+'" height="'+(ph+B)+'" fill="transparent"/>';
     if(v>0)s+='<path class="bar" d="M'+x+" "+(T+ph)+"V"+(top+r)+"Q"+x+" "+top+" "+(x+r)+" "+top+"H"+(x+bw-r)+"Q"+(x+bw)+" "+top+" "+(x+bw)+" "+(top+r)+"V"+(T+ph)+'Z"/>';
     s+="</g>";
-    if(i%every===0||i===N-1)s+='<text x="'+(L+i*step+step/2)+'" y="'+(H-6)+'" text-anchor="middle" fill="var(--muted)" font-size="10">'+(d.d.getMonth()+1)+"/"+d.d.getDate()+"</text>";
+    const cx=L+i*step+step/2;
+    if(!M)s+='<text x="'+cx+'" y="'+(H-6)+'" text-anchor="middle" fill="var(--muted)" font-size="10">'+(d.d.getMonth()+1)+"/"+d.d.getDate()+"</text>";
+    else{s+='<text x="'+cx+'" y="'+(T+ph+13)+'" text-anchor="middle" fill="var(--muted)" font-size="7.5">'+d.d.getDate()+"</text>";
+      const dim=new Date(d.d.getFullYear(),d.d.getMonth()+1,0).getDate();
+      if((i===0&&dim-d.d.getDate()>=3)||(i>0&&d.d.getDate()===1))s+='<text x="'+(L+i*step+1)+'" y="'+(H-5)+'" text-anchor="start" fill="var(--muted)" font-size="9">'+d.d.toLocaleDateString(undefined,{month:"short"})+"</text>";}
   });
   s+="</svg>";
   return {html:'<div class="chart"><h3></h3><div class="ro"></div>'+s+"</div>",title,vals,fmtv};
@@ -964,7 +987,7 @@ function renderTrends(){
 document.querySelectorAll("#ranges button").forEach(b=>b.onclick=()=>{trRange=+b.dataset.r;renderTrends();});
 
 const VIEWS={day:["dayView","tabDay"],log:["logView","tabLog"],trends:["trendsView","tabTrends"],edit:["editView","tabEdit"]};
-function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});$("days").hidden=!(w==="day"||w==="log");if(w==="day"){wantScroll=true;render();}else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
+function showTab(w){Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(v).hidden=k!==w;$(t).setAttribute("aria-selected",k===w);});$("dayRow").hidden=!(w==="day"||w==="log");if(w==="day"){wantScroll=true;render();}else if(w==="log"){renderDays();renderLog();}else if(w==="trends")renderTrends();else renderEdit();}
 Object.entries(VIEWS).forEach(([k,[v,t]])=>{$(t).onclick=()=>showTab(k);});
 let curToday=null;
 setInterval(()=>{if($("sheetHost").innerHTML)return;const t=cycleToday();if(curToday==null)curToday=t;if(t!==curToday){const was=curToday;curToday=t;if(selDate===was){selDate=t;loadDay();loadEvents();return;}renderDays();}if(!$("dayView").hidden)render();if(!$("logView").hidden)renderLog();},60000);
