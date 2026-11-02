@@ -360,10 +360,10 @@ function chain(stage,st,sk,durs,grace,endAt,en,rel,bottles){en=en||{};
     else if(i===0)e=stage.wake;
     // the bedtime routine (bath, then bedtime feed) keeps its clock time
     else if(rel&&((bl[i].t==="feed"&&bl[i+1]&&bl[i+1].t==="night")||(bl[i].t==="bath"&&bl[i+1]&&bl[i+1].t==="feed"&&bl[i+2]&&bl[i+2].t==="night")))e=rel[i];
-    // the next feed comes the planned gap after the last feed; if that feed was skipped, a bottle logged near it stands in
-    else if(rel&&bl[i].t==="feed"&&(()=>{for(let j=i-1;j>=0;j--)if(bl[j].t==="feed"){let a=base[j];
-      if(sk[j]&&bottles){let best=null;bottles.forEach(t=>{if(Math.abs(t-base[j])<=120&&(best==null||Math.abs(t-base[j])<Math.abs(best-base[j])))best=t;});if(best!=null)a=best;}
-      return (e=a+(rel[i]-rel[j]),true);}return false;})()){}
+    // every feed keeps its clock time from the schedule; only logging or editing that feed moves it
+    else if(rel&&bl[i].t==="feed")e=rel[i];
+    // the first feed block is 90 minutes in Moms on Call however long the bottle took, so the first nap keeps its time
+    else if(bl[i].split&&st[i]==null&&base[i-1]!=null)e=base[i-1]+durs[i-1];
     else if(en[i-1]!=null&&!sk[i-1])e=en[i-1];
     else e=bl[i-1].d===0&&!sk[i-1]&&st[i]==null?base[i-1]:base[i-1]+durs[i-1];
     if(st[i]!=null){const v=st[i];base[i]=grace&&Math.abs(v-e)<=grace?e:v;disp[i]=v;}
@@ -466,7 +466,7 @@ function renderDays(){
 }
 const stepWeek=n=>{const d=pdate(selDate);d.setDate(d.getDate()+7*n);selDate=dstr(d);wantScroll=true;loadDay();loadEvents();};
 $("dPrev").onclick=()=>stepWeek(-1);$("dNext").onclick=()=>stepWeek(1);
-const BUILD="b20261031-1430";
+const BUILD="b20261102-0930";
 // pick up a newly uploaded version on its own: check when the app comes back to the front
 async function checkUpdate(){try{const t=await (await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"})).text();const m=t.match(/const BUILD="([^"]+)"/);if(m&&m[1]!==BUILD&&!$("sheetHost").innerHTML)location.reload();}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkUpdate();});setInterval(checkUpdate,300000);
@@ -510,7 +510,7 @@ function render(){
   $("summary").textContent=shiftBed===0?"Bedtime on schedule, "+fmt(r.base[bi]):(shiftBed>0?"Bedtime "+dur(shiftBed)+" later, ":"Bedtime "+dur(shiftBed)+" earlier, ")+(shiftBed?fmt(r.base[bi]):"");
   // up next comes after the latest block she actually started; anything before it (a play she slept through) is passed over.
   // a block logged ahead of time hasn't happened yet, so it can still be next
-  let ni=-1;if(isToday){const O=order(stage).filter(i=>stage.blocks[i].t!=="grace"),st=log.starts||{},sk=log.skips||{};
+  let ni=-1;if(isToday){const O=order(stage).filter(i=>stage.blocks[i].t!=="grace"&&!quiet(stage,i)),st=log.starts||{},sk=log.skips||{};
     const begun=i=>st[i]!=null&&r.s[i]<=now;let p=-1;O.forEach((i,k)=>{if(begun(i))p=k;});
     O.slice(p+1).forEach(i=>{if(ni<0&&!begun(i)&&!sk[i]&&r.ends[i]>now)ni=i;});}
   $("nextCard").hidden=ni<0;
@@ -544,11 +544,16 @@ function render(){
     c.onclick=()=>openGapSheet(a,z,null,a);tl.appendChild(c);spans.push({card:c,start:a,end:z});};
   const items=order(stage).map((i,k)=>({i,k,start:r.s[i]})).concat(loose.map((e,k)=>({e,k:1000+k,start:e.at})));
   items.sort((a,b)=>a.start-b.start||a.k-b.k);
+  let lastCard=null,lastSpan=null;
   items.forEach(it=>{
     if(it.e){if(point(it.e)){addLoose(it.e);return;}if(prevEnd!=null&&it.e.at-prevEnd>=15)addGap(prevEnd,it.e.at,it.e.t==="bottle");addLoose(it.e);return;}
     const i=it.i,b=stage.blocks[i];
     const start=r.s[i],end=r.ends[i],sk=!!(log.skips||{})[i],logged=(log.starts||{})[i]!=null;
     if(sk&&!(log.notes||{})[i]&&!(log.instead||{})[i]&&covered(start,start+b.d))return;
+    // Moms on Call's first feed block runs until the first nap: the awake time after the bottle belongs to it, so no separate card
+    if(quiet(stage,i)){const nx=r.s[i+1]!=null?Math.min(end,r.s[i+1]):end;
+      if(lastCard&&lastSpan&&nx>lastSpan.end){lastCard.style.minHeight=(parseFloat(lastCard.style.minHeight)||0)+Math.round(Math.min(nx-lastSpan.end,150)*0.9)+"px";lastSpan.end=nx;}
+      prevEnd=Math.max(prevEnd==null?-1e9:prevEnd,nx);return;}
     if(prevEnd!=null&&start-prevEnd>=15)addGap(prevEnd,start,b.t==="feed");
     lastKind=sk?null:b.t;
     prevStart=start;prevEnd=Math.max(prevEnd==null?-1e9:prevEnd,sk?start+b.d:end);
@@ -580,7 +585,7 @@ function render(){
     card.innerHTML='<div class="row"><span class="name"></span><span class="range">'+rng+"</span></div>"+(b.note?'<span class="note"></span>':"")+(un?'<span class="note un"></span>':"")+(chips.length?'<div class="chips">'+chips.join("")+"</div>":"");
     card.querySelector(".name").textContent=b.label;if(un)card.querySelector(".un").textContent=un;if(b.note)card.querySelector(".note").textContent=b.note;
     card.onclick=()=>openSheet(i,stage,r);
-    tl.appendChild(card);tick();spans.push({card,start,end:sk?start+b.d:end});
+    tl.appendChild(card);tick();lastSpan={card,start,end:sk?start+b.d:end};lastCard=card;spans.push(lastSpan);
   });
   spans.sort((a,b)=>a.card.offsetTop-b.card.offsetTop);
   const tok=++renderTok;if(isToday)requestAnimationFrame(()=>{if(tok===renderTok)placeNow(tl,spans,now);});
@@ -590,6 +595,9 @@ function render(){
 let sheetPersist=null;
 // fast repeated taps (the ounce stepper) act on touch and skip the browser's double-tap zoom
 function tap(el,fn){if(!el)return;el.addEventListener("touchend",e=>{e.preventDefault();fn();},{passive:false});el.onclick=fn;}
+// the awake time split off the start-of-day feed stays out of sight unless something was logged on it
+function quiet(stage,i){const b=stage.blocks[i];if(!b||!b.split)return false;const L=log||{};
+  return (L.starts||{})[i]==null&&!(L.skips||{})[i]&&!(L.notes||{})[i]&&!(L.instead||{})[i]&&!events.some(x=>x.blk===i||x.inst===i);}
 function closeSheet(){$("sheetHost").innerHTML="";sheetPersist=null;}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&sheetPersist)try{sheetPersist();}catch(e){}});
 const INST={nap:"Napped",play:"Played",other:"Other"};
